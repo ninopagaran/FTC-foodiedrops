@@ -1,0 +1,9 @@
+{
+  "name": "FoodieDrops: Limited Restaurant Drops",
+  "description": "A marketplace for limited-release menu drops from real restaurants. Order before the cutoff. Pickup when it’s ready.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
