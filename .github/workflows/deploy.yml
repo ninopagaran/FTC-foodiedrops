@@ -41,5 +41,5 @@ jobs:
           port: ${{ secrets.FTP_PORT }}
           protocol: ftp
           local-dir: out/
-          server-dir: /public_html/drops.foodtruckcommunity.com/
+          server-dir: ${{ secrets.FTP_DOC_ROOT }}
           dangerous-clean-slate: true
