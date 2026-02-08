@@ -1,0 +1,52 @@
+name: Deploy to GoDaddy cPanel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      - name: Configure SSH
+        env:
+          GODADDY_SSH_KEY: ${{ secrets.GODADDY_SSH_KEY }}
+          GODADDY_HOST: ${{ secrets.GODADDY_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$GODADDY_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$GODADDY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy via rsync
+        env:
+          GODADDY_HOST: ${{ secrets.GODADDY_HOST }}
+          GODADDY_USER: ${{ secrets.GODADDY_USER }}
+          GODADDY_PORT: ${{ secrets.GODADDY_PORT }}
+          GODADDY_DOC_ROOT: ${{ secrets.GODADDY_DOC_ROOT }}
+        run: |
+          rsync -az --delete -e "ssh -p ${GODADDY_PORT}" out/ "${GODADDY_USER}@${GODADDY_HOST}:${GODADDY_DOC_ROOT}/"
