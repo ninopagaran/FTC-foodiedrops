@@ -8,8 +8,10 @@ import { Drop, Purchase, User, UserTier, Profile, DropApprovalStatus, WaitlistEn
 const mapProfileToUser = (profile: Profile): User => {
     return {
         id: profile.id,
+        username: profile.username || profile.email?.split('@')[0] || 'foodie',
         name: profile.name || 'Foodie',
         email: profile.email,
+        phone: profile.phone,
         isVendor: profile.is_vendor,
         isAdmin: profile.is_admin,
         isInfluencer: true, // Default for now
@@ -23,8 +25,10 @@ const mapProfileToUser = (profile: Profile): User => {
 const mapSessionToUser = (sessionUser: { id: string; email?: string | null }): User => {
     return {
         id: sessionUser.id,
+        username: sessionUser.email?.split('@')[0] || 'user',
         name: sessionUser.email?.split('@')[0] || 'User',
         email: sessionUser.email || '',
+        phone: undefined,
         isVendor: false,
         isAdmin: false,
         isInfluencer: false,
@@ -78,6 +82,12 @@ export const loginUser = async (email: string, pass: string) => {
 };
 
 export const signUpUser = async (email: string, pass: string) => {
+  const { data: roleData, error: roleError } = await supabase
+    .rpc('check_email_role', { p_email: email });
+  if (!roleError && roleData?.exists) {
+    throw new Error('This email is already registered. Please create another account.');
+  }
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password: pass,
@@ -85,14 +95,15 @@ export const signUpUser = async (email: string, pass: string) => {
   
   if (error) throw error;
   
-  if (data.user) {
-    // Create profile entry
+  // Create profile entry only if session is active (RLS allows insert for auth.uid()).
+  if (data.session?.user) {
     const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
-        email: email,
-        name: email.split('@')[0],
-        is_vendor: false,
-        is_admin: false
+      id: data.session.user.id,
+      email: email,
+      username: email.split('@')[0],
+      name: email.split('@')[0],
+      is_vendor: false,
+      is_admin: false
     });
     if (profileError) console.error("Error creating profile:", profileError);
   }
@@ -132,6 +143,27 @@ export const updateProfile = async (userId: string, updates: Partial<Profile>): 
         
     if (error) throw error;
     return data as Profile;
+};
+
+export const checkUsernameAvailable = async (username: string, currentUserId?: string): Promise<{ available: boolean; checked: boolean }> => {
+    if (!username) return { available: true, checked: false };
+    const { data: rpcData, error: rpcError } = await supabase
+        .rpc('check_username_available', { p_username: username, p_current_user: currentUserId || null });
+
+    if (!rpcError && typeof rpcData === 'boolean') {
+        return { available: rpcData, checked: true };
+    }
+
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', username);
+
+    if (error) {
+        return { available: true, checked: false };
+    }
+    const conflict = (data || []).some((row: { id: string }) => row.id !== currentUserId);
+    return { available: !conflict, checked: true };
 };
 
 // --- DROPS ---
@@ -253,14 +285,30 @@ export const getPurchasesForVendorDrops = async (dropIds: string[]): Promise<Pur
     return data as Purchase[];
 };
 
+export const getAppSettings = async (): Promise<{ booking_fee_per_package: number }> => {
+    const { data, error } = await supabase
+        .from('app_settings')
+        .select('booking_fee_per_package')
+        .eq('id', 1)
+        .single();
+    if (error) throw error;
+    return { booking_fee_per_package: Number(data.booking_fee_per_package || 0) };
+};
+
+export const updateAppSettings = async (updates: { booking_fee_per_package: number }): Promise<void> => {
+    const { error } = await supabase
+        .from('app_settings')
+        .upsert({ id: 1, booking_fee_per_package: updates.booking_fee_per_package }, { onConflict: 'id' });
+    if (error) throw error;
+};
+
 // ATOMIC PURCHASE TRANSACTION via RPC
-export const savePurchase = async (drop: Drop, payload: any): Promise<Purchase> => {
+export const savePurchase = async (drop: Drop, payload: any, bookingFeePerPackage = 0): Promise<Purchase> => {
     if (drop.approval_status !== DropApprovalStatus.APPROVED) {
       throw new Error("This package is not approved for booking yet.");
     }
     // Calculate Total Paid for validation
-    let total = drop.price * payload.quantity;
-    if (payload.deliveryRequested) total += (drop.delivery_fee || 0);
+    let subtotal = drop.price * payload.quantity;
     
     // Add modifier costs
     if (payload.selectedItems) {
@@ -270,8 +318,13 @@ export const savePurchase = async (drop: Drop, payload: any): Promise<Purchase> 
                  group.options.forEach((opt: any) => modifiersCost += opt.additionalPrice);
              });
         });
-        total += (modifiersCost * payload.quantity);
+        subtotal += (modifiersCost * payload.quantity);
     }
+    const deliveryFee = payload.deliveryRequested ? (drop.delivery_fee || 0) : 0;
+    const bookingFee = bookingFeePerPackage * payload.quantity;
+    const taxRate = Number(drop.tax_rate || 0);
+    const taxAmount = (subtotal + deliveryFee + bookingFee) * taxRate;
+    const total = subtotal + deliveryFee + bookingFee + taxAmount;
 
     const rpcParams = {
         p_drop_id: drop.id,

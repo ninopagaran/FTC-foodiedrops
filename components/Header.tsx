@@ -44,7 +44,12 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogin, onLogout, cartCou
           
           {user ? (
             <div className="flex items-center gap-6">
-              <button onClick={() => navigate('/profile')} className="hover:text-fuchsia-400 transition-colors">{user.name}</button>
+              <button onClick={() => navigate('/profile')} className="hover:text-fuchsia-400 transition-colors">
+                <span className="font-black">{user.name}</span>
+                {user.username && (
+                  <span className="ml-2 text-[9px] font-black uppercase tracking-widest text-zinc-500">@{user.username}</span>
+                )}
+              </button>
               <button onClick={onLogout} className="text-zinc-600 hover:text-red-500 transition-colors text-[9px] tracking-widest">Logout</button>
             </div>
           ) : (

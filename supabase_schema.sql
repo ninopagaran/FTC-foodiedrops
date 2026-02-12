@@ -6,12 +6,70 @@
 -- 1. TABLES
 CREATE TABLE IF NOT EXISTS public.profiles (
   id uuid NOT NULL PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  username TEXT,
   name TEXT,
   email TEXT UNIQUE,
   phone TEXT,
   is_vendor BOOLEAN DEFAULT false NOT NULL,
   is_admin BOOLEAN DEFAULT false NOT NULL
 );
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS username TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_username_unique_idx
+  ON public.profiles (username)
+  WHERE username IS NOT NULL;
+
+-- Username availability checker (bypasses RLS safely)
+CREATE OR REPLACE FUNCTION public.check_username_available(p_username TEXT, p_current_user UUID DEFAULT NULL)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+DECLARE
+  v_exists BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE username = p_username
+      AND (p_current_user IS NULL OR id <> p_current_user)
+  ) INTO v_exists;
+
+  RETURN NOT v_exists;
+END;
+$$;
+
+-- Email role checker (bypasses RLS safely)
+CREATE OR REPLACE FUNCTION public.check_email_role(p_email TEXT)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+DECLARE
+  v_profile RECORD;
+BEGIN
+  SELECT id, is_vendor, is_admin
+  INTO v_profile
+  FROM public.profiles
+  WHERE email = p_email
+  LIMIT 1;
+
+  IF v_profile IS NULL THEN
+    RETURN json_build_object('exists', false, 'is_vendor', false, 'is_admin', false);
+  END IF;
+
+  RETURN json_build_object(
+    'exists', true,
+    'is_vendor', COALESCE(v_profile.is_vendor, false),
+    'is_admin', COALESCE(v_profile.is_admin, false)
+  );
+END;
+$$;
 
 CREATE TABLE IF NOT EXISTS public.vendors (
   id uuid NOT NULL PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
@@ -31,6 +89,7 @@ CREATE TABLE IF NOT EXISTS public.drops (
   start_date TIMESTAMPTZ NOT NULL,
   end_date TIMESTAMPTZ NOT NULL,
   price NUMERIC NOT NULL,
+  tax_rate NUMERIC DEFAULT 0,
   total_quantity INT NOT NULL,
   quantity_remaining INT NOT NULL,
   status TEXT NOT NULL,
@@ -69,6 +128,10 @@ CREATE TABLE IF NOT EXISTS public.purchases (
   customer_name TEXT NOT NULL,
   customer_email TEXT NOT NULL,
   quantity INT NOT NULL,
+  subtotal NUMERIC,
+  tax_rate NUMERIC,
+  tax_amount NUMERIC,
+  booking_fee NUMERIC,
   total_paid NUMERIC NOT NULL,
   order_notes TEXT,
   is_bulk BOOLEAN DEFAULT false,
@@ -110,6 +173,31 @@ ALTER TABLE public.purchases
 
 ALTER TABLE public.purchases
   ADD COLUMN IF NOT EXISTS is_bulk BOOLEAN DEFAULT false;
+
+ALTER TABLE public.drops
+  ADD COLUMN IF NOT EXISTS tax_rate NUMERIC DEFAULT 0;
+
+ALTER TABLE public.purchases
+  ADD COLUMN IF NOT EXISTS subtotal NUMERIC;
+
+ALTER TABLE public.purchases
+  ADD COLUMN IF NOT EXISTS tax_rate NUMERIC;
+
+ALTER TABLE public.purchases
+  ADD COLUMN IF NOT EXISTS tax_amount NUMERIC;
+
+ALTER TABLE public.purchases
+  ADD COLUMN IF NOT EXISTS booking_fee NUMERIC;
+
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  id INT PRIMARY KEY,
+  booking_fee_per_package NUMERIC NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+INSERT INTO public.app_settings (id, booking_fee_per_package)
+VALUES (1, 0)
+ON CONFLICT (id) DO NOTHING;
 
 CREATE UNIQUE INDEX IF NOT EXISTS purchases_stripe_checkout_session_id_idx
   ON public.purchases (stripe_checkout_session_id)
@@ -178,6 +266,21 @@ CREATE POLICY "Users can insert their own profile" ON public.profiles FOR INSERT
 DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile or Admin" ON public.profiles FOR UPDATE USING (
   auth.uid() = id OR 
+  public.is_admin() = true
+);
+
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public app settings readable" ON public.app_settings;
+CREATE POLICY "Public app settings readable" ON public.app_settings FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Admin can update app settings" ON public.app_settings;
+CREATE POLICY "Admin can update app settings" ON public.app_settings FOR UPDATE USING (
+  public.is_admin() = true
+);
+
+DROP POLICY IF EXISTS "Admin can insert app settings" ON public.app_settings;
+CREATE POLICY "Admin can insert app settings" ON public.app_settings FOR INSERT WITH CHECK (
   public.is_admin() = true
 );
 
@@ -353,8 +456,13 @@ DECLARE
   v_quantity_remaining INT;
   v_base_price NUMERIC;
   v_delivery_fee NUMERIC;
+  v_tax_rate NUMERIC;
+  v_booking_fee_per_package NUMERIC;
+  v_booking_fee NUMERIC;
+  v_tax_amount NUMERIC;
   v_approval_status TEXT;
   v_calculated_total NUMERIC;
+  v_expected_total NUMERIC;
   v_new_purchase_id UUID;
   v_verified_user_id UUID;
 BEGIN
@@ -366,8 +474,8 @@ BEGIN
   END IF;
 
   -- 2. Lock the drop row specifically for update. 
-  SELECT quantity_remaining, price, delivery_fee, approval_status
-  INTO v_quantity_remaining, v_base_price, v_delivery_fee, v_approval_status
+  SELECT quantity_remaining, price, delivery_fee, approval_status, COALESCE(tax_rate, 0)
+  INTO v_quantity_remaining, v_base_price, v_delivery_fee, v_approval_status, v_tax_rate
   FROM public.drops
   WHERE id = p_drop_id
   FOR UPDATE;
@@ -394,6 +502,19 @@ BEGIN
     v_calculated_total := v_calculated_total + COALESCE(v_delivery_fee, 0);
   END IF;
 
+  SELECT COALESCE(booking_fee_per_package, 0)
+  INTO v_booking_fee_per_package
+  FROM public.app_settings
+  WHERE id = 1;
+
+  v_booking_fee := COALESCE(v_booking_fee_per_package, 0) * p_quantity;
+  v_tax_amount := ((v_base_price * p_quantity) + v_booking_fee + (CASE WHEN p_delivery_requested THEN COALESCE(v_delivery_fee, 0) ELSE 0 END)) * v_tax_rate;
+
+  v_expected_total := (v_base_price * p_quantity)
+    + v_booking_fee
+    + v_tax_amount
+    + (CASE WHEN p_delivery_requested THEN COALESCE(v_delivery_fee, 0) ELSE 0 END);
+
   -- SECURITY PATCH: If the drop relies on Menu Items (base_price might be 0), 
   -- we must ensure the user is actually paying *something*.
   -- This prevents the 'Free Menu' exploit where users pay 0 for a menu drop.
@@ -404,6 +525,10 @@ BEGIN
   -- Standard check: Ensure payment meets the base price * quantity at minimum.
   IF p_total_paid < v_calculated_total THEN
     RAISE EXCEPTION 'Payment verification failed. Calculated base % exceeds provided %', v_calculated_total, p_total_paid;
+  END IF;
+
+  IF p_total_paid < v_expected_total THEN
+    RAISE EXCEPTION 'Payment verification failed. Expected % exceeds provided %', v_expected_total, p_total_paid;
   END IF;
 
   -- 6. Create Purchase Record using VERIFIED User ID

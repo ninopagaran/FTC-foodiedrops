@@ -1,27 +1,31 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Drop, DropStatus, MenuItem, ModifierOption, SelectedItem, User } from '../types';
 import { Button } from '../components/Button';
 import { CheckoutModal } from '../components/CheckoutModal';
 import { Countdown } from '../components/Countdown';
 import * as api from '../services/api';
-import { BulkOrderModal } from '../components/BulkOrderModal';
 
 interface DropDetailProps {
   drop: Drop;
   user: User | null;
+  bookingFeePerPackage: number;
   onBack: () => void;
   onPurchaseConfirm: (id: string, qty: number, name: string, email: string, delivery: boolean, selections: SelectedItem[], address?: string, orderNotes?: string, isBulk?: boolean) => Promise<string>;
 }
 
-export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, onBack, onPurchaseConfirm }) => {
+export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePerPackage, onBack, onPurchaseConfirm }) => {
   const [qty, setQty] = useState(1);
+  const [qtyInput, setQtyInput] = useState('1');
+  const [qtyError, setQtyError] = useState<string | null>(null);
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [isBulkOpen, setIsBulkOpen] = useState(false);
-  const [bulkQty, setBulkQty] = useState(10);
-  const [bulkNotes, setBulkNotes] = useState('');
+  const [isQuickCheckoutLoading, setIsQuickCheckoutLoading] = useState(false);
   const [deliveryRequested, setDeliveryRequested] = useState(false);
-  const [distanceEligibility, setDistanceEligibility] = useState<'IDLE' | 'CHECKING' | 'ELIGIBLE' | 'OUT_OF_RANGE' | 'ERROR'>('IDLE');
+  const [distanceEligibility] = useState<'IDLE' | 'CHECKING' | 'ELIGIBLE' | 'OUT_OF_RANGE' | 'ERROR'>('IDLE');
+
+  useEffect(() => {
+    setQtyInput(String(qty));
+  }, [qty]);
   
   const [selections, setSelections] = useState<Record<string, Record<string, ModifierOption[]>>>({});
 
@@ -81,6 +85,11 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, onBack, onPu
   }, [drop.menu_items, drop.price, selections]);
 
   const calculatedSubtotal = useMemo(() => unitPrice * qty, [unitPrice, qty]);
+  const deliveryFee = deliveryRequested ? (drop.delivery_fee || 0) : 0;
+  const bookingFee = bookingFeePerPackage * qty;
+  const taxRate = Number(drop.tax_rate || 0);
+  const taxAmount = (calculatedSubtotal + deliveryFee + bookingFee) * taxRate;
+  const orderTotal = calculatedSubtotal + deliveryFee + bookingFee + taxAmount;
 
   const validateSelections = () => {
     for (const item of drop.menu_items) {
@@ -97,8 +106,26 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, onBack, onPu
 
   const handlePurchaseClick = () => {
     if (!validateSelections()) return;
-    // CRITICAL FIX: Always force internal checkout first to decrement inventory.
-    // Do NOT bypass to Stripe Link immediately.
+    if (qty < 1) {
+      setQtyError('Quantity must be at least 1.');
+      return;
+    }
+    if (qty > drop.quantity_remaining) {
+      setQtyError(`Only ${drop.quantity_remaining} left in stock.`);
+      return;
+    }
+    setQtyError(null);
+    if (user && !deliveryRequested) {
+      setIsQuickCheckoutLoading(true);
+      handleConfirmCheckout(user.name, user.email)
+        .then((url) => window.location.assign(url))
+        .catch((error) => {
+          console.error("Quick checkout failed:", error);
+          alert(error.message || 'Checkout failed.');
+        })
+        .finally(() => setIsQuickCheckoutLoading(false));
+      return;
+    }
     setIsCheckoutOpen(true);
   };
 
@@ -117,19 +144,6 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, onBack, onPu
     return onPurchaseConfirm(drop.id, qty, name, email, deliveryRequested, finalSelections, deliveryAddress);
   };
 
-  const handleConfirmBulk = async (name: string, email: string, quantity: number, deliveryAddress?: string, notes?: string): Promise<string> => {
-    const finalSelections: SelectedItem[] = drop.menu_items.map(item => ({
-      itemId: item.id,
-      name: item.name,
-      basePrice: item.basePrice,
-      selectedModifiers: item.modifierGroups.map(group => ({
-        groupId: group.id,
-        groupName: group.name,
-        options: selections[item.id]?.[group.id] || []
-      }))
-    }));
-    return onPurchaseConfirm(drop.id, quantity, name, email, deliveryRequested, finalSelections, deliveryAddress, notes, true);
-  };
 
   const checkDeliveryEligibility = () => {
     setDistanceEligibility('CHECKING');
@@ -281,9 +295,33 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, onBack, onPu
 
         <div className="lg:col-span-5 relative">
           <div className="sticky top-40 bg-white text-black p-8 md:p-10 border-8 border-black shadow-[24px_24px_0px_0px_#00000033]">
-            <div className="mb-8">
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1 block">Order Total</span>
-              <span className="text-6xl font-heading font-black italic tracking-tighter leading-none">${calculatedSubtotal.toFixed(2)}</span>
+            <div className="mb-8 space-y-4">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1 block">Order Total</span>
+                <span className="text-6xl font-heading font-black italic tracking-tighter leading-none">${orderTotal.toFixed(2)}</span>
+              </div>
+              <div className="text-[10px] font-black uppercase tracking-widest text-zinc-600 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span>Subtotal</span>
+                  <span>${calculatedSubtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Booking Fee</span>
+                  <span>${bookingFee.toFixed(2)}</span>
+                </div>
+                {taxAmount > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span>Tax</span>
+                    <span>${taxAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                {deliveryFee > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span>Delivery Fee</span>
+                    <span>${deliveryFee.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="space-y-6">
@@ -343,12 +381,15 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, onBack, onPu
                         <div className="grid grid-cols-2 bg-zinc-900 border-2 border-zinc-800 p-1 font-black uppercase tracking-widest text-[9px]">
                           <button onClick={() => setDeliveryRequested(false)} className={`py-3 transition-colors ${!deliveryRequested ? 'bg-green-500 text-black shadow-[0_0_15px_rgba(34,197,94,0.4)]' : 'text-zinc-500 hover:text-white'}`}>Pickup</button>
                           <button 
-                            disabled={!drop.delivery_available}
+                            disabled
                             onClick={() => distanceEligibility !== 'ELIGIBLE' ? checkDeliveryEligibility() : setDeliveryRequested(true)}
-                            className={`py-3 transition-colors ${deliveryRequested ? 'bg-green-500 text-black shadow-[0_0_15px_rgba(34,197,94,0.4)]' : 'text-zinc-500 hover:text-white'} ${!drop.delivery_available ? 'opacity-20 cursor-not-allowed' : ''}`}
+                            className="py-3 transition-colors text-zinc-500 opacity-40 cursor-not-allowed"
                           >
                             Delivery
                           </button>
+                        </div>
+                        <div className="text-[9px] font-black uppercase tracking-widest text-zinc-600 text-center">
+                          Delivery disabled
                         </div>
                       </div>
 
@@ -356,29 +397,103 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, onBack, onPu
                         <label className="block text-[9px] font-black uppercase tracking-[0.3em] text-zinc-500 mb-2 text-center">Quantity</label>
                         <div className="flex items-center border-4 border-zinc-800 bg-black font-black h-16 text-3xl">
                           <button 
-                            onClick={() => setQty(Math.max(1, qty - 1))} 
+                            onClick={() => {
+                              setQtyError(null);
+                              setQty(Math.max(1, qty - 1));
+                            }} 
                             disabled={qty <= 1}
                             className="w-16 h-full flex items-center justify-center hover:bg-zinc-900 text-white transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                           >
                             -
                           </button>
-                          <span className="flex-1 text-center border-x-4 border-zinc-800 h-full flex items-center justify-center text-white">{qty}</span>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            value={qtyInput}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/[^\d]/g, '');
+                              setQtyInput(raw);
+                              if (raw === '') return;
+                              const next = parseInt(raw, 10);
+                              if (Number.isNaN(next)) return;
+                              setQty(Math.max(1, next));
+                              if (next > drop.quantity_remaining) {
+                                setQtyError(`Only ${drop.quantity_remaining} left in stock.`);
+                              } else {
+                                setQtyError(null);
+                              }
+                            }}
+                            onBlur={() => {
+                              const normalized = qtyInput.replace(/[^\d]/g, '');
+                              if (!normalized) {
+                                setQty(1);
+                                setQtyError(null);
+                                return;
+                              }
+                              const next = parseInt(normalized, 10);
+                              if (Number.isNaN(next) || next < 1) {
+                                setQty(1);
+                                setQtyError(null);
+                                return;
+                              }
+                              setQty(next);
+                              if (next > drop.quantity_remaining) {
+                                setQtyError(`Only ${drop.quantity_remaining} left in stock.`);
+                              } else {
+                                setQtyError(null);
+                              }
+                            }}
+                            className="flex-1 text-center border-x-4 border-zinc-800 h-full w-full text-3xl font-black text-white bg-black outline-none leading-none py-0"
+                          />
                           <button 
-                            onClick={() => setQty(Math.min(drop.quantity_remaining, qty + 1))} 
-                            disabled={qty >= drop.quantity_remaining}
+                            onClick={() => {
+                              setQtyError(null);
+                              setQty(qty + 1);
+                            }} 
                             className="w-16 h-full flex items-center justify-center hover:bg-zinc-900 text-white transition-all disabled:opacity-20 disabled:cursor-not-allowed"
                           >
                             +
                           </button>
                         </div>
+                        {qtyError && (
+                          <div className="mt-2 text-[10px] font-black uppercase tracking-widest text-red-500 text-center">
+                            {qtyError}
+                          </div>
+                        )}
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Button size="xl" className="w-full py-6 text-2xl font-black italic shadow-none border-none hover:scale-[1.02] transition-transform" style={{ backgroundColor: accentColor }} onClick={handlePurchaseClick}>
-                           Reserve & Pay
-                        </Button>
-                        <Button size="xl" variant="outline" className="w-full py-6 text-2xl font-black italic border-4 border-zinc-900 hover:border-white transition-colors" onClick={() => setIsBulkOpen(true)}>
-                           Bulk Order
+                      <div className="bg-zinc-900 border-2 border-zinc-800 p-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span>Subtotal</span>
+                          <span className="text-white">${calculatedSubtotal.toFixed(2)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Booking Fee</span>
+                          <span className="text-white">${bookingFee.toFixed(2)}</span>
+                        </div>
+                        {taxAmount > 0 && (
+                          <div className="flex items-center justify-between">
+                            <span>Tax</span>
+                            <span className="text-white">${taxAmount.toFixed(2)}</span>
+                          </div>
+                        )}
+                        
+                        <div className="flex items-center justify-between text-white border-t border-zinc-800 pt-2">
+                          <span>Total</span>
+                          <span>${orderTotal.toFixed(2)}</span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-4">
+                        <Button
+                          size="xl"
+                          className="w-full py-6 text-2xl font-black italic shadow-none border-none hover:scale-[1.02] transition-transform"
+                          style={{ backgroundColor: accentColor }}
+                          onClick={handlePurchaseClick}
+                          isLoading={isQuickCheckoutLoading}
+                          disabled={isQuickCheckoutLoading}
+                        >
+                           {isQuickCheckoutLoading ? 'Redirecting...' : 'Reserve & Pay'}
                         </Button>
                       </div>
                    </div>
@@ -432,25 +547,17 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, onBack, onPu
         drop={drop} 
         quantity={qty} 
         deliveryRequested={deliveryRequested} 
-        totalPrice={calculatedSubtotal + (deliveryRequested ? (drop.delivery_fee || 0) : 0)}
+        subtotal={calculatedSubtotal}
+        deliveryFee={deliveryFee}
+        bookingFee={bookingFee}
+        taxAmount={taxAmount}
+        totalPrice={orderTotal}
         isOpen={isCheckoutOpen} 
         onClose={() => setIsCheckoutOpen(false)} 
-        onConfirm={handleConfirmCheckout} 
+        onConfirm={handleConfirmCheckout}
+        user={user}
       />
 
-      <BulkOrderModal
-        drop={drop}
-        maxQuantity={drop.quantity_remaining}
-        isOpen={isBulkOpen}
-        onClose={() => setIsBulkOpen(false)}
-        onConfirm={handleConfirmBulk}
-        initialQuantity={bulkQty}
-        onQuantityChange={setBulkQty}
-        notes={bulkNotes}
-        onNotesChange={setBulkNotes}
-        deliveryRequested={deliveryRequested}
-        totalPrice={unitPrice * bulkQty + (deliveryRequested ? (drop.delivery_fee || 0) : 0)}
-      />
     </div>
   );
 };

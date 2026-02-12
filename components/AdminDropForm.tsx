@@ -39,9 +39,13 @@ const getInitialState = (initialData?: Drop | null): Partial<Drop> => {
 
 export const AdminDropForm: React.FC<AdminDropFormProps> = ({ isOpen, onClose, onSave, initialData }) => {
   const [formData, setFormData] = useState<Partial<Drop>>(getInitialState(initialData));
+  const [priceInput, setPriceInput] = useState('1');
+  const [quantityInput, setQuantityInput] = useState('1');
 
   useEffect(() => {
     setFormData(getInitialState(initialData));
+    setPriceInput(String(initialData?.price ?? 1));
+    setQuantityInput(String(initialData?.total_quantity ?? 1));
   }, [initialData, isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -142,11 +146,74 @@ export const AdminDropForm: React.FC<AdminDropFormProps> = ({ isOpen, onClose, o
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-400">Price</label>
-              <input name="price" type="number" value={formData.price} onChange={handleChange} className="w-full bg-zinc-900 border border-zinc-800 p-3" />
+              <input
+                name="price"
+                type="number"
+                min={1}
+                step="0.01"
+                value={priceInput}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    setPriceInput('');
+                    return;
+                  }
+                  if (!/^\d*\.?\d*$/.test(raw)) return;
+                  setPriceInput(raw);
+                  const parsed = Number(raw);
+                  if (Number.isFinite(parsed)) {
+                    handleChange({
+                      ...e,
+                      target: { ...e.target, value: String(Math.max(1, parsed)) }
+                    } as React.ChangeEvent<HTMLInputElement>);
+                  }
+                }}
+                onBlur={(e) => {
+                  const parsed = Number(priceInput);
+                  const safe = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+                  setPriceInput(String(safe));
+                  handleChange({
+                    ...e,
+                    target: { ...e.target, value: String(safe) }
+                  } as React.ChangeEvent<HTMLInputElement>);
+                }}
+                className="w-full bg-zinc-900 border border-zinc-800 p-3"
+              />
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-400">Total Quantity</label>
-              <input name="total_quantity" type="number" value={formData.total_quantity} onChange={handleChange} className="w-full bg-zinc-900 border border-zinc-800 p-3" />
+              <input
+                name="total_quantity"
+                type="number"
+                min={1}
+                value={quantityInput}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    setQuantityInput('');
+                    return;
+                  }
+                  if (!/^\d*$/.test(raw)) return;
+                  setQuantityInput(raw);
+                  const parsed = parseInt(raw, 10);
+                  if (!Number.isNaN(parsed)) {
+                    handleChange({
+                      ...e,
+                      target: { ...e.target, value: String(Math.max(1, parsed)) }
+                    } as React.ChangeEvent<HTMLInputElement>);
+                  }
+                }}
+                onBlur={(e) => {
+                  const parsed = parseInt(quantityInput, 10);
+                  const safe = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+                  setQuantityInput(String(safe));
+                  handleChange({
+                    ...e,
+                    target: { ...e.target, value: String(safe) }
+                  } as React.ChangeEvent<HTMLInputElement>);
+                }}
+                className="w-full bg-zinc-900 border border-zinc-800 p-3"
+              />
             </div>
              <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-400">Status</label>

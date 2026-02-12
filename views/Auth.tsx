@@ -1,18 +1,26 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '../components/Button';
 import * as api from '../services/api';
 
 interface AuthProps {
   onSuccess: () => void;
+  initialMessage?: string;
 }
 
-export const Auth: React.FC<AuthProps> = ({ onSuccess }) => {
+export const Auth: React.FC<AuthProps> = ({ onSuccess, initialMessage }) => {
   const [mode, setMode] = useState<'LOGIN' | 'SIGNUP'>('LOGIN');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(initialMessage || null);
+
+  useEffect(() => {
+    if (initialMessage) {
+      setMessage(initialMessage);
+      setMode('LOGIN');
+    }
+  }, [initialMessage]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

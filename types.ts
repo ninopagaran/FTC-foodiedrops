@@ -28,6 +28,7 @@ export type SortOption = 'NEWEST' | 'PRICE_LOW' | 'FASTEST' | 'DATE';
 
 export interface Profile {
   id: string;
+  username?: string;
   name: string;
   email: string;
   phone?: string;
@@ -42,8 +43,10 @@ export interface QuantityTier {
 
 export interface User {
   id: string;
+  username?: string;
   name: string;
   email: string;
+  phone?: string;
   isInfluencer: boolean;
   isVendor: boolean;
   isAdmin: boolean;
@@ -92,6 +95,10 @@ export interface Purchase {
   customer_name: string;
   customer_email: string;
   quantity: number;
+  subtotal?: number;
+  tax_rate?: number;
+  tax_amount?: number;
+  booking_fee?: number;
   timestamp: string;
   total_paid: number;
   order_notes?: string;
@@ -128,6 +135,7 @@ export interface Drop {
   start_date: string;
   end_date: string;
   price: number;
+  tax_rate?: number;
   total_quantity: number;
   quantity_remaining: number;
   status: DropStatus;

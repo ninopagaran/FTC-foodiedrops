@@ -16,9 +16,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   onRejectDrop,
   onBack,
 }) => {
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY' | 'CUSTOMERS' | 'ORDERS'>('PENDING');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY' | 'CUSTOMERS' | 'ORDERS' | 'SETTINGS'>('PENDING');
   const [customers, setCustomers] = useState<Profile[]>([]);
   const [allPurchases, setAllPurchases] = useState<Purchase[]>([]);
+  const [bookingFeePerPackage, setBookingFeePerPackage] = useState(0);
+  const [bookingFeeInput, setBookingFeeInput] = useState('1');
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (activeTab !== 'CUSTOMERS') return;
@@ -33,6 +37,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     api.getAllPurchases().then(setAllPurchases).catch((error) => {
       console.error('Failed to load orders', error);
       setAllPurchases([]);
+    });
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'SETTINGS') return;
+    api.getAppSettings().then((settings) => {
+      setBookingFeePerPackage(settings.booking_fee_per_package);
+      setBookingFeeInput(String(settings.booking_fee_per_package || 1));
+      setSettingsMessage(null);
+    }).catch((error) => {
+      console.error('Failed to load app settings', error);
+      setSettingsMessage('Failed to load settings.');
     });
   }, [activeTab]);
 
@@ -70,6 +86,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <button onClick={() => setActiveTab('HISTORY')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'HISTORY' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>History</button>
             <button onClick={() => setActiveTab('ORDERS')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'ORDERS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Orders</button>
             <button onClick={() => setActiveTab('CUSTOMERS')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'CUSTOMERS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Customers</button>
+            <button onClick={() => setActiveTab('SETTINGS')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'SETTINGS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Settings</button>
           </div>
         </div>
 
@@ -123,9 +140,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="bg-zinc-900/40 border border-zinc-800 p-4 text-[10px] text-zinc-400 space-y-1">
                       <p className="uppercase tracking-widest text-zinc-500">Pickup Location</p>
                       <p>{drop.logistics?.address || '—'}</p>
-                      {drop.delivery_available && (
-                        <p className="text-zinc-500">Delivery enabled • ${Number(drop.delivery_fee || 0).toFixed(2)} fee</p>
-                      )}
                     </div>
                   </div>
                   <div className="lg:col-span-3 flex flex-col justify-between gap-4">
@@ -203,6 +217,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {activeTab === 'SETTINGS' && (
+          <div className="bg-zinc-950 border border-zinc-900 p-8 max-w-xl">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-500 mb-6">Booking Fee</h3>
+            <div className="space-y-4">
+              <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Per Package (USD)</label>
+              <input
+                type="number"
+                min={1}
+                step="0.01"
+                value={bookingFeeInput}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    setBookingFeeInput('');
+                    return;
+                  }
+                  if (!/^\d*\.?\d*$/.test(raw)) return;
+                  setBookingFeeInput(raw);
+                  const parsed = Number(raw);
+                  if (Number.isFinite(parsed)) {
+                    setBookingFeePerPackage(Math.max(1, parsed));
+                  }
+                }}
+                onBlur={() => {
+                  const parsed = Number(bookingFeeInput);
+                  const safe = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+                  setBookingFeePerPackage(safe);
+                  setBookingFeeInput(String(safe));
+                }}
+                className="w-full bg-black border-2 border-zinc-800 p-4 text-white font-black outline-none focus:border-fuchsia-500"
+              />
+              {settingsMessage && (
+                <p className={`text-[10px] font-black uppercase tracking-widest ${settingsMessage.includes('Failed') ? 'text-red-400' : 'text-green-400'}`}>
+                  {settingsMessage}
+                </p>
+              )}
+              <Button
+                size="md"
+                className="bg-fuchsia-500 text-black shadow-none"
+                isLoading={isSavingSettings}
+                onClick={async () => {
+                  try {
+                    setIsSavingSettings(true);
+                    setSettingsMessage(null);
+                    await api.updateAppSettings({ booking_fee_per_package: bookingFeePerPackage });
+                    setSettingsMessage('Settings saved.');
+                  } catch (error) {
+                    console.error('Failed to update settings', error);
+                    setSettingsMessage('Failed to save settings.');
+                  } finally {
+                    setIsSavingSettings(false);
+                  }
+                }}
+              >
+                Save Booking Fee
+              </Button>
+              <p className="text-[10px] text-zinc-600 font-bold">
+                Applies to all orders. Example: 8 quantity = ${ (bookingFeePerPackage * 8).toFixed(2) }.
+              </p>
+            </div>
           </div>
         )}
 

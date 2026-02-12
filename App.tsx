@@ -13,28 +13,32 @@ import * as api from './services/api';
 import { Button } from './components/Button';
 
 const parseRoute = (hash: string) => {
+  const isAuthCallback = hash.includes('access_token=') || hash.includes('type=signup');
+  if (isAuthCallback) {
+    return { view: 'AUTH', id: null, confirm: true };
+  }
   const path = hash.startsWith('#/') ? hash.substring(2) : '';
   const parts = path.split('/');
   
   if (parts[0] === 'drop' && parts[1]) {
-    return { view: 'DETAIL', id: parts[1] };
+    return { view: 'DETAIL', id: parts[1], confirm: false };
   }
   if (parts[0] === 'studio') {
-    return { view: 'STUDIO', id: null };
+    return { view: 'STUDIO', id: null, confirm: false };
   }
   if (parts[0] === 'profile') {
-    return { view: 'PROFILE', id: null };
+    return { view: 'PROFILE', id: null, confirm: false };
   }
   if (parts[0] === 'influence') {
-    return { view: 'INFLUENCE', id: null };
+    return { view: 'INFLUENCE', id: null, confirm: false };
   }
   if (parts[0] === 'admin') {
-    return { view: 'ADMIN', id: null };
+    return { view: 'ADMIN', id: null, confirm: false };
   }
   if (parts[0] === 'login' || parts[0] === 'auth') {
-    return { view: 'AUTH', id: null };
+    return { view: 'AUTH', id: null, confirm: false };
   }
-  return { view: 'HOME', id: null };
+  return { view: 'HOME', id: null, confirm: false };
 };
 
 const App: React.FC = () => {
@@ -44,6 +48,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [userPurchases, setUserPurchases] = useState<Purchase[]>([]);
   const [route, setRoute] = useState(parseRoute(window.location.hash));
+  const [bookingFeePerPackage, setBookingFeePerPackage] = useState(0);
   
   const [isLoading, setIsLoading] = useState(true);
 
@@ -97,6 +102,13 @@ const App: React.FC = () => {
         ]);
         if (!isMounted) return;
         setUser(currentUser);
+        try {
+          const settings = await api.getAppSettings();
+          if (isMounted) setBookingFeePerPackage(settings.booking_fee_per_package);
+        } catch (e) {
+          console.error("Failed to load app settings:", e);
+          if (isMounted) setBookingFeePerPackage(0);
+        }
         await fetchDrops(currentUser, false);
         if (currentUser) {
           try {
@@ -122,6 +134,13 @@ const App: React.FC = () => {
     const unsubscribe = api.onAuthChange(async (authUser) => {
       if (authUser) {
         setUser(authUser);
+        try {
+          const settings = await api.getAppSettings();
+          setBookingFeePerPackage(settings.booking_fee_per_package);
+        } catch (e) {
+          console.error("Failed to load app settings:", e);
+          setBookingFeePerPackage(0);
+        }
         await fetchDrops(authUser, false);
         try {
             const purchases = await api.getPurchasesByUser(authUser.id);
@@ -132,6 +151,13 @@ const App: React.FC = () => {
       } else {
         setUser(null);
         setUserPurchases([]);
+        try {
+          const settings = await api.getAppSettings();
+          setBookingFeePerPackage(settings.booking_fee_per_package);
+        } catch (e) {
+          console.error("Failed to load app settings:", e);
+          setBookingFeePerPackage(0);
+        }
         await fetchDrops(null, false);
       }
     });
@@ -147,6 +173,12 @@ const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (user && route.confirm) {
+      navigate('/profile');
+    }
+  }, [user, route.confirm]);
+
   const navigate = (path: string) => {
     window.location.hash = path;
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -158,8 +190,10 @@ const App: React.FC = () => {
     if (profile) {
       setUser(prevUser => ({
         ...prevUser!,
+        username: profile.username,
         name: profile.name,
         email: profile.email,
+        phone: profile.phone,
         isVendor: profile.is_vendor,
         isAdmin: profile.is_admin,
       }));
@@ -200,7 +234,7 @@ const App: React.FC = () => {
       }
     } catch (error: any) {
       console.error(`${authMode} failed:`, error);
-      setAuthMessage("Authentication failed.");
+      setAuthMessage(error.message || "Authentication failed.");
     } finally {
       setIsAuthLoading(false);
     }
@@ -243,7 +277,7 @@ const App: React.FC = () => {
         deliveryAddress,
         orderNotes,
         isBulk
-      });
+      }, bookingFeePerPackage);
       
       if (user) {
         setUserPurchases(prev => [purchase, ...prev]);
@@ -293,9 +327,9 @@ const App: React.FC = () => {
       case 'HOME':
         return <Home user={user} drops={drops} onSelectDrop={(id) => navigate(`/drop/${id}`)} onPartnerClick={() => navigate('/studio')} />;
       case 'DETAIL':
-        return selectedDrop ? <DropDetail user={user} drop={selectedDrop} onBack={() => navigate('/')} onPurchaseConfirm={handlePurchaseConfirm} /> : <Home user={user} drops={drops} onSelectDrop={(id) => navigate(`/drop/${id}`)} onPartnerClick={() => navigate('/studio')} />;
+        return selectedDrop ? <DropDetail user={user} drop={selectedDrop} bookingFeePerPackage={bookingFeePerPackage} onBack={() => navigate('/')} onPurchaseConfirm={handlePurchaseConfirm} /> : <Home user={user} drops={drops} onSelectDrop={(id) => navigate(`/drop/${id}`)} onPartnerClick={() => navigate('/studio')} />;
       case 'AUTH':
-        return user ? <Profile user={user} purchases={userPurchases} onLogout={handleLogout} onBack={() => navigate('/')} /> : <Auth onSuccess={handleAuthSuccess} />;
+        return user ? <Profile user={user} purchases={userPurchases} onLogout={handleLogout} onBack={() => navigate('/')} onProfileUpdate={refreshUser} /> : <Auth onSuccess={handleAuthSuccess} initialMessage={route.confirm ? 'Email confirmed. Please log in.' : undefined} />;
       case 'STUDIO':
         if (user) {
           return <SellerStudio user={user} onProfileUpdate={refreshUser} onBack={() => navigate('/')} onSave={handleSaveDrop} existingDrops={vendorDrops} />;
@@ -360,7 +394,7 @@ const App: React.FC = () => {
           </div>
         );
       case 'PROFILE':
-        return user ? <Profile user={user} purchases={userPurchases} onLogout={handleLogout} onBack={() => navigate('/')} /> : <Auth onSuccess={handleAuthSuccess} />;
+        return user ? <Profile user={user} purchases={userPurchases} onLogout={handleLogout} onBack={() => navigate('/')} onProfileUpdate={refreshUser} /> : <Auth onSuccess={handleAuthSuccess} />;
       case 'INFLUENCE':
         return <InfluenceLab user={user} drops={drops} onBack={() => navigate('/')} onLogin={handleLogin} />;
       case 'ADMIN':

@@ -31,6 +31,8 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
   const [submissionResult, setSubmissionResult] = useState<string | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [lastSubmittedId, setLastSubmittedId] = useState<string | null>(null);
+  const [taxRateInput, setTaxRateInput] = useState('0');
+  const [numberInputMap, setNumberInputMap] = useState<Record<string, string>>({});
   
   // Default to a placeholder image, but allow user to upload their own immediately
   const [imagePreview, setImagePreview] = useState<string>('https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=800');
@@ -60,6 +62,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
       chef: user.name || '', // Default to the user's name/brand
       category: '',
       price: 0, 
+      tax_rate: 0,
       total_quantity: 50,
       status: DropStatus.UPCOMING,
       type: DropType.PICKUP,
@@ -88,6 +91,60 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
   };
 
   const [formData, setFormData] = useState<Partial<Drop>>(getInitialFormData());
+
+  useEffect(() => {
+    const percent = Number(formData.tax_rate || 0) * 100;
+    const next = Number.isFinite(percent) ? String(percent) : '0';
+    setTaxRateInput(next);
+  }, [formData.tax_rate]);
+
+  const getNumberInputValue = (key: string, fallback?: number) => {
+    if (key in numberInputMap) return numberInputMap[key];
+    if (typeof fallback === 'number' && Number.isFinite(fallback)) return String(fallback);
+    return '';
+  };
+
+  const setNumberInputValue = (key: string, raw: string) => {
+    setNumberInputMap(prev => ({ ...prev, [key]: raw }));
+  };
+
+  const handleDecimalChange = (key: string, raw: string, onCommit: (val: number) => void) => {
+    if (raw === '') {
+      setNumberInputValue(key, '');
+      return;
+    }
+    if (!/^\d*\.?\d*$/.test(raw)) return;
+    setNumberInputValue(key, raw);
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed)) onCommit(parsed);
+  };
+
+  const handleDecimalBlur = (key: string, defaultValue: number, onCommit: (val: number) => void) => {
+    const raw = numberInputMap[key] ?? '';
+    const parsed = Number(raw);
+    const safe = Number.isFinite(parsed) && parsed >= defaultValue ? parsed : defaultValue;
+    onCommit(safe);
+    setNumberInputValue(key, String(safe));
+  };
+
+  const handleIntChange = (key: string, raw: string, onCommit: (val: number) => void) => {
+    if (raw === '') {
+      setNumberInputValue(key, '');
+      return;
+    }
+    if (!/^\d*$/.test(raw)) return;
+    setNumberInputValue(key, raw);
+    const parsed = parseInt(raw, 10);
+    if (!Number.isNaN(parsed)) onCommit(parsed);
+  };
+
+  const handleIntBlur = (key: string, defaultValue: number, onCommit: (val: number) => void) => {
+    const raw = numberInputMap[key] ?? '';
+    const parsed = parseInt(raw, 10);
+    const safe = Number.isFinite(parsed) && parsed >= defaultValue ? parsed : defaultValue;
+    onCommit(safe);
+    setNumberInputValue(key, String(safe));
+  };
   
   useEffect(() => {
     const fetchManifestData = async () => {
@@ -297,6 +354,8 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
         creator_id: user.id,
         price: calculatedBasePrice || formData.price || 0,
         quantity_remaining: formData.total_quantity!,
+        delivery_available: formData.delivery_available || false,
+        delivery_fee: formData.delivery_fee || 0,
         status: new Date(formData.start_date!) > new Date() ? DropStatus.UPCOMING : DropStatus.LIVE,
         approval_status: DropApprovalStatus.PENDING,
       } as Drop;
@@ -519,7 +578,15 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                              </div>
                              <div className="space-y-4">
                                <label className="text-[10px] font-black uppercase text-zinc-600">Base Price ($)</label>
-                               <input type="number" className="w-full bg-zinc-900 border-2 border-zinc-800 p-4 font-black text-xl" value={item.basePrice} onChange={e => updateMenuItem(item.id, { basePrice: Number(e.target.value) })} />
+                               <input
+                                 type="number"
+                                 min={1}
+                                 step="0.01"
+                                 className="w-full bg-zinc-900 border-2 border-zinc-800 p-4 font-black text-xl"
+                                 value={getNumberInputValue(`item:${item.id}:basePrice`, item.basePrice)}
+                                 onChange={e => handleDecimalChange(`item:${item.id}:basePrice`, e.target.value, (val) => updateMenuItem(item.id, { basePrice: val }))}
+                                 onBlur={() => handleDecimalBlur(`item:${item.id}:basePrice`, 1, (val) => updateMenuItem(item.id, { basePrice: val }))}
+                               />
                              </div>
                            </div>
 
@@ -553,8 +620,9 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                                                         type="number" 
                                                         min="1"
                                                         className="w-10 bg-black border border-zinc-700 p-1 text-center text-[10px]" 
-                                                        value={group.minSelect} 
-                                                        onChange={e => updateModifierGroup(item.id, group.id, { minSelect: Math.max(1, Number(e.target.value)) })} 
+                                                        value={getNumberInputValue(`group:${group.id}:min`, group.minSelect)} 
+                                                        onChange={e => handleIntChange(`group:${group.id}:min`, e.target.value, (val) => updateModifierGroup(item.id, group.id, { minSelect: Math.max(1, val) }))} 
+                                                        onBlur={() => handleIntBlur(`group:${group.id}:min`, 1, (val) => updateModifierGroup(item.id, group.id, { minSelect: Math.max(1, val) }))} 
                                                      />
                                                  </div>
                                             )}
@@ -567,8 +635,9 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                                                     type="number" 
                                                     min="1"
                                                     className="w-10 bg-black border border-zinc-700 p-1 text-center text-[10px]" 
-                                                    value={group.maxSelect} 
-                                                    onChange={e => updateModifierGroup(item.id, group.id, { maxSelect: Number(e.target.value) })} 
+                                                    value={getNumberInputValue(`group:${group.id}:max`, group.maxSelect)} 
+                                                    onChange={e => handleIntChange(`group:${group.id}:max`, e.target.value, (val) => updateModifierGroup(item.id, group.id, { maxSelect: Math.max(1, val) }))} 
+                                                    onBlur={() => handleIntBlur(`group:${group.id}:max`, 1, (val) => updateModifierGroup(item.id, group.id, { maxSelect: Math.max(1, val) }))} 
                                                 />
                                             </div>
                                          </div>
@@ -578,7 +647,15 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                                          {group.options.map((opt) => (
                                            <div key={opt.id} className="flex gap-2">
                                               <input className="bg-zinc-900 p-3 text-[11px] font-bold flex-1" value={opt.name} onChange={e => updateModifierOption(item.id, group.id, opt.id, { name: e.target.value })} />
-                                              <input type="number" className="w-20 bg-zinc-900 p-3 text-[11px] font-black text-fuchsia-500" value={opt.additionalPrice} onChange={e => updateModifierOption(item.id, group.id, opt.id, { additionalPrice: Number(e.target.value) })} />
+                                              <input
+                                                type="number"
+                                                min={1}
+                                                step="0.01"
+                                                className="w-20 bg-zinc-900 p-3 text-[11px] font-black text-fuchsia-500"
+                                                value={getNumberInputValue(`opt:${opt.id}:price`, opt.additionalPrice)}
+                                                onChange={e => handleDecimalChange(`opt:${opt.id}:price`, e.target.value, (val) => updateModifierOption(item.id, group.id, opt.id, { additionalPrice: val }))}
+                                                onBlur={() => handleDecimalBlur(`opt:${opt.id}:price`, 1, (val) => updateModifierOption(item.id, group.id, opt.id, { additionalPrice: val }))}
+                                              />
                                            </div>
                                          ))}
                                          <button onClick={() => addModifierOption(item.id, group.id)} className="border-2 border-dashed border-zinc-800 text-zinc-600 text-[9px] font-black uppercase tracking-widest hover:text-white py-3">+ Add Option</button>
@@ -623,25 +700,63 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                     
                     <div className="space-y-4">
                        <label className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-500">Total Available Units <span className="text-fuchsia-500">*</span></label>
-                       <input type="number" className="w-full bg-zinc-950 border-4 border-zinc-900 p-6 font-black text-2xl focus:border-fuchsia-500 outline-none" value={formData.total_quantity} onChange={e => setFormData({...formData, total_quantity: Number(e.target.value)})} />
+                       <input
+                         type="number"
+                         className="w-full bg-zinc-950 border-4 border-zinc-900 p-6 font-black text-2xl focus:border-fuchsia-500 outline-none"
+                         value={getNumberInputValue('drop:total_quantity', formData.total_quantity || 1)}
+                         onChange={e => handleIntChange('drop:total_quantity', e.target.value, (val) => setFormData({ ...formData, total_quantity: Math.max(1, val) }))}
+                         onBlur={() => handleIntBlur('drop:total_quantity', 1, (val) => setFormData({ ...formData, total_quantity: Math.max(1, val) }))}
+                       />
                     </div>
 
-                    <div className="bg-zinc-950 border-4 border-zinc-900 p-8 space-y-6">
-                      <div className="flex items-center justify-between">
+                    <div className="bg-zinc-950 border-4 border-zinc-900 p-8 space-y-6 relative">
+                      <div className="flex items-center justify-between opacity-50">
                          <h3 className="text-xl font-black uppercase italic tracking-tighter text-white">Offer Delivery</h3>
-                         <div 
-                          onClick={() => setFormData({...formData, delivery_available: !formData.delivery_available})}
-                          className={`w-14 h-8 flex items-center p-1 cursor-pointer transition-all ${formData.delivery_available ? 'bg-fuchsia-500' : 'bg-zinc-800'}`}
-                         >
-                            <div className={`w-6 h-6 bg-white transition-all ${formData.delivery_available ? 'translate-x-6' : 'translate-x-0'}`} />
+                         <div className="w-14 h-8 flex items-center p-1 bg-zinc-800">
+                            <div className="w-6 h-6 bg-white" />
                          </div>
                       </div>
-                      {formData.delivery_available && (
-                        <div className="animate-in fade-in slide-in-from-top-4">
-                          <label className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-500">Flat Delivery Fee ($)</label>
-                          <input type="number" className="w-full bg-zinc-900 border-2 border-zinc-800 p-4 font-black text-xl focus:border-fuchsia-500 outline-none mt-2" value={formData.delivery_fee} onChange={e => setFormData({...formData, delivery_fee: Number(e.target.value)})} />
-                        </div>
-                      )}
+                      <div className="opacity-50">
+                        <label className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-500">Flat Delivery Fee ($)</label>
+                        <input
+                          type="number"
+                          min={1}
+                          step="0.01"
+                          className="w-full bg-zinc-900 border-2 border-zinc-800 p-4 font-black text-xl focus:border-fuchsia-500 outline-none mt-2"
+                          value={formData.delivery_fee}
+                          disabled
+                        />
+                      </div>
+                      <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-zinc-500 pointer-events-none">
+                        Delivery disabled
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-950 border-4 border-zinc-900 p-8 space-y-4">
+                      <label className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-500">Sales Tax Rate (%)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="w-full bg-zinc-900 border-2 border-zinc-800 p-4 font-black text-xl focus:border-fuchsia-500 outline-none mt-2"
+                        value={taxRateInput}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '') {
+                            setTaxRateInput('');
+                            return;
+                          }
+                          if (!/^\d*\.?\d*$/.test(raw)) return;
+                          setTaxRateInput(raw);
+                        }}
+                        onBlur={() => {
+                          const parsed = Number(taxRateInput);
+                          const safe = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+                          setFormData({ ...formData, tax_rate: safe / 100 });
+                          setTaxRateInput(safe.toFixed(2).replace(/\.00$/, ''));
+                        }}
+                      />
+                      <p className="text-[10px] text-zinc-600 font-bold">Example: 8.25 for 8.25%.</p>
                     </div>
                     
                     <div className="space-y-8 pt-6 border-t border-zinc-900">

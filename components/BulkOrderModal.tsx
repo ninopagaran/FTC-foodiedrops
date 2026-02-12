@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './Button';
-import { Drop } from '../types';
+import { Drop, User } from '../types';
 import { sanitizeInput, validateEmail, generateIdempotencyKey } from '../utils/security';
 
 interface BulkOrderModalProps {
@@ -15,6 +15,7 @@ interface BulkOrderModalProps {
   onNotesChange: (value: string) => void;
   deliveryRequested: boolean;
   totalPrice: number;
+  user?: User | null;
 }
 
 export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
@@ -29,11 +30,15 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
   onNotesChange,
   deliveryRequested,
   totalPrice,
+  user,
 }) => {
   const [formData, setFormData] = useState({ name: '', email: '', deliveryAddress: '' });
+  const [qtyInput, setQtyInput] = useState(String(initialQuantity));
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const idempotencyKey = useRef<string>(generateIdempotencyKey());
+  const deliveryFee = deliveryRequested ? (drop.delivery_fee || 0) : 0;
+  const subtotal = Math.max(0, totalPrice - deliveryFee);
 
   useEffect(() => {
     if (!isOpen) {
@@ -43,8 +48,20 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
         setErrorMessage(null);
         idempotencyKey.current = generateIdempotencyKey();
       }, 200);
+      return;
     }
-  }, [isOpen]);
+    if (user) {
+      setFormData(prev => ({
+        ...prev,
+        name: user.name || prev.name,
+        email: user.email || prev.email
+      }));
+    }
+  }, [isOpen, user]);
+
+  useEffect(() => {
+    setQtyInput(String(initialQuantity));
+  }, [initialQuantity]);
 
   const validate = () => {
     setErrorMessage(null);
@@ -143,8 +160,26 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
                 max={maxQuantity}
                 required
                 className="w-full bg-zinc-900 border-4 border-black p-4 text-white font-black outline-none focus:border-fuchsia-500"
-                value={initialQuantity}
-                onChange={(e) => onQuantityChange(Math.min(maxQuantity, Math.max(1, Number(e.target.value))))}
+                value={qtyInput}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw === '') {
+                    setQtyInput('');
+                    return;
+                  }
+                  if (!/^\d*$/.test(raw)) return;
+                  setQtyInput(raw);
+                  const parsed = parseInt(raw, 10);
+                  if (!Number.isNaN(parsed)) {
+                    onQuantityChange(Math.min(maxQuantity, Math.max(1, parsed)));
+                  }
+                }}
+                onBlur={() => {
+                  const parsed = parseInt(qtyInput, 10);
+                  const safe = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+                  setQtyInput(String(safe));
+                  onQuantityChange(Math.min(maxQuantity, safe));
+                }}
               />
               <p className="text-[9px] text-zinc-600 font-bold">Max available: {maxQuantity}</p>
             </div>
@@ -177,9 +212,21 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
             </div>
           )}
 
-          <div className="bg-zinc-900 p-6 border-4 border-zinc-800 flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Total</span>
-            <span className="text-3xl font-black italic text-white">${totalPrice.toFixed(2)}</span>
+          <div className="bg-zinc-900 p-6 border-4 border-zinc-800 space-y-2">
+            <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-zinc-500">
+              <span>Subtotal</span>
+              <span>${subtotal.toFixed(2)}</span>
+            </div>
+            {deliveryFee > 0 && (
+              <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                <span>Delivery Fee</span>
+                <span>${deliveryFee.toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Total</span>
+              <span className="text-3xl font-black italic text-white">${totalPrice.toFixed(2)}</span>
+            </div>
           </div>
 
           <div className="flex flex-col md:flex-row gap-4">
