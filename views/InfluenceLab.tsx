@@ -90,14 +90,14 @@ export const InfluenceLab: React.FC<InfluenceLabProps> = ({ user, drops, onBack,
   }
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-6 md:p-16">
+    <div className="min-h-screen bg-[#050505] text-white p-4 sm:p-6 md:p-16">
       <div className="max-w-7xl mx-auto">
         <div className="flex justify-between items-center mb-16">
           <div className="flex items-center gap-6">
             <button onClick={onBack} className="bg-fuchsia-600 text-black p-3 hover:bg-white transition-all shadow-[4px_4px_0px_0px_#fff]">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M10 19l-7-7 7-7"></path></svg>
             </button>
-            <h1 className="font-heading text-5xl font-black italic uppercase tracking-tighter leading-none">Influence Lab</h1>
+            <h1 className="font-heading text-3xl sm:text-4xl md:text-5xl font-black italic uppercase tracking-tighter leading-none">Influence Lab</h1>
           </div>
           <div className="bg-zinc-950 px-6 py-2 border-2 border-zinc-900 flex items-center gap-4">
              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
@@ -211,7 +211,7 @@ export const InfluenceLab: React.FC<InfluenceLabProps> = ({ user, drops, onBack,
              <div className="w-32 h-32 bg-fuchsia-500 text-black flex items-center justify-center mb-10 shadow-[8px_8px_0px_0px_#fff] transform rotate-12">
                 <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="5" d="M9 11l3 3L22 4m-2 1h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
              </div>
-             <h2 className="font-heading text-6xl font-black italic uppercase tracking-tighter mb-4">Submitted.</h2>
+             <h2 className="font-heading text-4xl sm:text-5xl md:text-6xl font-black italic uppercase tracking-tighter mb-4">Submitted.</h2>
              <p className="text-zinc-500 font-black uppercase tracking-[0.3em] max-w-md italic">
                Your video has been sent to the brand for review. You'll be notified upon approval.
              </p>

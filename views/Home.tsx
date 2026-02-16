@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Drop, DropStatus, SortOption, User } from '../types';
 import { DropCard } from '../components/DropCard';
 import { Button } from '../components/Button';
+import * as api from '../services/api';
 
 interface HomeProps {
   user: User | null;
@@ -11,7 +12,39 @@ interface HomeProps {
   onPartnerClick: () => void;
 }
 
-const CATEGORIES = ['ALL', 'BBQ', 'Japanese', 'Drinks', 'Fusion', 'Pantry', 'Vegan', 'Dessert'];
+const CATEGORIES = [
+  'ALL',
+  'American',
+  'Pizza',
+  'Italian',
+  'Mexican',
+  'Tex-Mex',
+  'Asian Fast Casual',
+  'Chinese',
+  'Japanese',
+  'Thai',
+  'Indian',
+  'Mediterranean',
+  'Burgers',
+  'Sandwiches',
+  'BBQ',
+  'Vietnamese',
+  'Korean',
+  'Healthy',
+  'Salads',
+  'Bowls',
+  'Middle Eastern',
+  'Breakfast',
+  'Brunch',
+  'Spanish',
+  'Tapas',
+  'Caribbean',
+  'Jamaican',
+  'Latin American',
+  'Peruvian',
+  'Vegan / Plant-Based',
+  'Other'
+];
 
 const Reveal: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isVisible, setVisible] = useState(false);
@@ -49,8 +82,15 @@ export const Home: React.FC<HomeProps> = ({ user, drops, onSelectDrop, onPartner
   const [searchQuery, setSearchQuery] = useState('');
 
   const displayDrops = useMemo(() => {
-    // Combine Live and Upcoming into the main view
-    const relevantDrops = drops.filter(d => d.status === DropStatus.LIVE || d.status === DropStatus.UPCOMING);
+    const now = Date.now();
+    // Combine Live and Upcoming into the main view, exclude archived (sold out or ended)
+    const relevantDrops = drops.filter(d => {
+      if (d.status !== DropStatus.LIVE && d.status !== DropStatus.UPCOMING) return false;
+      if (d.quantity_remaining === 0) return false;
+      const ends = new Date(d.end_date).getTime();
+      if (Number.isFinite(ends) && ends < now) return false;
+      return true;
+    });
 
     let result = activeCategory === 'ALL' 
       ? relevantDrops 
@@ -89,7 +129,35 @@ export const Home: React.FC<HomeProps> = ({ user, drops, onSelectDrop, onPartner
     }
   }, [drops, activeCategory, sortBy, searchQuery]);
 
+  const availableCategories = useMemo(() => {
+    const now = Date.now();
+    const relevantDrops = drops.filter(d => {
+      if (d.status !== DropStatus.LIVE && d.status !== DropStatus.UPCOMING) return false;
+      if (d.quantity_remaining === 0) return false;
+      const ends = new Date(d.end_date).getTime();
+      if (Number.isFinite(ends) && ends < now) return false;
+      return true;
+    });
+    const present = new Set(relevantDrops.map(d => d.category).filter(Boolean));
+    return CATEGORIES.filter(cat => cat === 'ALL' || present.has(cat));
+  }, [drops]);
+
+  useEffect(() => {
+    if (activeCategory !== 'ALL' && !availableCategories.includes(activeCategory)) {
+      setActiveCategory('ALL');
+    }
+  }, [availableCategories, activeCategory]);
+
   const ctaText = user?.isVendor ? 'Create a Drop' : 'Apply to Drop';
+
+  const handleSelectDrop = async (id: string) => {
+    try {
+      await api.logEvent({ name: 'drop_click', payload: { drop_id: id } });
+    } catch {
+      // best-effort analytics
+    }
+    onSelectDrop(id);
+  };
 
   return (
     <div className="min-h-screen bg-[#050505]">
@@ -105,7 +173,7 @@ export const Home: React.FC<HomeProps> = ({ user, drops, onSelectDrop, onPartner
         </div>
         <div className="relative z-10 text-center px-6 max-w-4xl">
           <Reveal>
-            <h1 className="font-heading text-5xl md:text-7xl font-black tracking-tighter mb-6 leading-tight">
+            <h1 className="font-heading text-4xl sm:text-5xl md:text-7xl font-black tracking-tighter mb-6 leading-tight">
               Limited Food Drops.
               <br />
               Order Before The Cutoff.
@@ -130,7 +198,7 @@ export const Home: React.FC<HomeProps> = ({ user, drops, onSelectDrop, onPartner
       
       {/* Trust Strip */}
       <section className="bg-black py-8 border-y border-zinc-900">
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-8 text-center">
             {['Support Local Kitchens', 'Limited Runs Only', 'More Money to Restaurants', 'No Algorithms', 'Pickup & Local Delivery'].map(item => (
               <div key={item} className="text-zinc-500 text-[9px] font-bold uppercase tracking-widest">{item}</div>
@@ -140,40 +208,42 @@ export const Home: React.FC<HomeProps> = ({ user, drops, onSelectDrop, onPartner
       </section>
 
       {/* Filter Bar */}
-      <div className="sticky top-[73px] z-40 bg-black/95 backdrop-blur-2xl border-b border-zinc-900 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center justify-between gap-8">
-           <div className="flex items-center gap-3 overflow-x-auto pb-2 lg:pb-0 no-scrollbar">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`px-4 py-1.5 text-[9px] font-bold uppercase tracking-widest border transition-all duration-300 whitespace-nowrap ${
-                  activeCategory === cat 
-                    ? 'bg-white text-black border-white' 
-                    : 'bg-transparent text-zinc-400 border-zinc-800 hover:border-white hover:text-white'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
+      {availableCategories.length > 1 && (
+        <div className="sticky top-[64px] md:top-[73px] z-40 bg-black/95 backdrop-blur-2xl border-b border-zinc-900 px-4 sm:px-6 py-3 sm:py-4">
+          <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+             <div className="flex items-center gap-3 overflow-x-auto pb-2 lg:pb-0 no-scrollbar">
+              {availableCategories.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`px-4 py-1.5 text-[9px] font-bold uppercase tracking-widest border transition-all duration-300 whitespace-nowrap ${
+                    activeCategory === cat 
+                      ? 'bg-white text-black border-white' 
+                      : 'bg-transparent text-zinc-400 border-zinc-800 hover:border-white hover:text-white'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Main Grid */}
-      <section id="live-drops" className="max-w-7xl mx-auto px-6 py-20">
+      <section id="live-drops" className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
         <Reveal>
           <div className="flex items-end gap-6 mb-12">
             <div>
-               <h2 className="font-heading text-4xl md:text-6xl font-black tracking-tighter leading-none">Live & Incoming</h2>
+               <h2 className="font-heading text-3xl sm:text-4xl md:text-6xl font-black tracking-tighter leading-none">Live & Incoming</h2>
             </div>
           </div>
         </Reveal>
         {displayDrops.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-12">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 sm:gap-12">
             {displayDrops.map((drop) => (
               <Reveal key={drop.id}>
-                <DropCard drop={drop} onClick={onSelectDrop} />
+                <DropCard drop={drop} onClick={handleSelectDrop} />
               </Reveal>
             ))}
           </div>
@@ -185,10 +255,10 @@ export const Home: React.FC<HomeProps> = ({ user, drops, onSelectDrop, onPartner
       </section>
 
       {/* What is a Drop? Section */}
-      <section className="bg-zinc-950 py-20 px-6 border-y border-zinc-900">
+      <section className="bg-zinc-950 py-16 sm:py-20 px-4 sm:px-6 border-y border-zinc-900">
         <div className="max-w-3xl mx-auto text-center">
           <Reveal>
-            <h2 className="font-heading text-4xl md:text-6xl font-black tracking-tighter leading-tight mb-6">Not Your Typical Takeout.</h2>
+            <h2 className="font-heading text-3xl sm:text-4xl md:text-6xl font-black tracking-tighter leading-tight mb-6">Not Your Typical Takeout.</h2>
             <p className="text-zinc-400 text-base leading-relaxed mb-8">
               A drop is a limited-release menu created by a restaurant for a short window — sometimes a weekend, sometimes just a day. Chefs use drops to test new ideas, bring back cult favorites, and cook without constraints. You get access to food most people never even hear about. When it sells out, it’s gone.
             </p>
@@ -200,10 +270,10 @@ export const Home: React.FC<HomeProps> = ({ user, drops, onSelectDrop, onPartner
       </section>
 
       {/* Feature Strip */}
-      <section className="py-20 px-6">
+      <section id="feature-strip" className="py-16 sm:py-20 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto">
           <Reveal>
-            <h2 className="font-heading text-center text-4xl font-black tracking-tighter mb-12">Why People Love Drops</h2>
+            <h2 className="font-heading text-center text-3xl sm:text-4xl font-black tracking-tighter mb-10 sm:mb-12">Why People Love Drops</h2>
           </Reveal>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
             {[
@@ -224,10 +294,10 @@ export const Home: React.FC<HomeProps> = ({ user, drops, onSelectDrop, onPartner
       </section>
 
        {/* Social Proof Section */}
-       <section className="bg-zinc-950 py-20 px-6 border-y border-zinc-900">
+      <section className="bg-zinc-950 py-16 sm:py-20 px-4 sm:px-6 border-y border-zinc-900">
         <div className="max-w-7xl mx-auto">
           <Reveal>
-            <h2 className="font-heading text-center text-4xl font-black tracking-tighter mb-12">Kitchens People Are Watching</h2>
+            <h2 className="font-heading text-center text-3xl sm:text-4xl font-black tracking-tighter mb-10 sm:mb-12">Kitchens People Are Watching</h2>
           </Reveal>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
             {[
@@ -237,7 +307,7 @@ export const Home: React.FC<HomeProps> = ({ user, drops, onSelectDrop, onPartner
             ].map(({quote, author}) => (
               <Reveal key={author}>
                 <figure className="text-center">
-                  <blockquote className="text-xl font-medium mb-4">“{quote}”</blockquote>
+                  <blockquote className="text-lg sm:text-xl font-medium mb-4">“{quote}”</blockquote>
                   <figcaption className="text-fuchsia-400 font-bold uppercase text-[10px] tracking-widest">{author}</figcaption>
                 </figure>
               </Reveal>
@@ -247,10 +317,10 @@ export const Home: React.FC<HomeProps> = ({ user, drops, onSelectDrop, onPartner
       </section>
 
       {/* Restaurant CTA */}
-      <section className="bg-fuchsia-500 text-black py-20 px-6">
+      <section className="bg-fuchsia-500 text-black py-16 sm:py-20 px-4 sm:px-6">
         <div className="max-w-4xl mx-auto text-center">
            <Reveal>
-            <h2 className="font-heading text-4xl md:text-6xl font-black tracking-tighter leading-tight mb-4">Run a Drop. Keep More Revenue. Reach People Who Show Up Hungry.</h2>
+            <h2 className="font-heading text-3xl sm:text-4xl md:text-6xl font-black tracking-tighter leading-tight mb-4">Run a Drop. Keep More Revenue. Reach People Who Show Up Hungry.</h2>
             <p className="font-heading text-3xl font-bold italic tracking-tighter text-black/90 mb-6">Restaurants</p>
             <p className="text-black/80 text-base leading-relaxed mb-8 font-medium">
               Foodie Drops gives restaurants a launchpad — not a toll booth. No massive commissions. No fighting algorithms. No discount pressure. Just a direct line to customers who want what you make.
@@ -263,7 +333,7 @@ export const Home: React.FC<HomeProps> = ({ user, drops, onSelectDrop, onPartner
       </section>
       
       {/* Footer */}
-      <footer className="bg-black border-t-2 border-zinc-900 py-16 px-6">
+      <footer className="bg-black border-t-2 border-zinc-900 py-12 sm:py-16 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto text-center">
            <Reveal>
             <div className="flex items-center justify-center gap-3 mb-6">

@@ -89,7 +89,9 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
   const bookingFee = bookingFeePerPackage * qty;
   const taxRate = Number(drop.tax_rate || 0);
   const taxAmount = (calculatedSubtotal + deliveryFee + bookingFee) * taxRate;
-  const orderTotal = calculatedSubtotal + deliveryFee + bookingFee + taxAmount;
+  const baseTotal = calculatedSubtotal + deliveryFee + bookingFee + taxAmount;
+  const stripeFeeAmount = drop.pass_stripe_fee ? (baseTotal * 0.029) + 0.20 : 0;
+  const orderTotal = baseTotal + stripeFeeAmount;
 
   const validateSelections = () => {
     for (const item of drop.menu_items) {
@@ -115,6 +117,7 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
       return;
     }
     setQtyError(null);
+    api.logEvent({ name: 'reserve_pay_click', payload: { drop_id: drop.id, quantity: qty } }).catch(() => {});
     if (user && !deliveryRequested) {
       setIsQuickCheckoutLoading(true);
       handleConfirmCheckout(user.name, user.email)
@@ -191,19 +194,19 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
       <section className="relative h-[50vh] md:h-[65vh] overflow-hidden">
         <img src={drop.image} className="w-full h-full object-cover grayscale-[20%]" alt={drop.name} />
         <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent" />
-        <div className="absolute bottom-16 left-0 w-full px-6">
+        <div className="absolute bottom-16 left-0 w-full px-4 sm:px-6">
            <div className="max-w-7xl mx-auto">
-              <h1 className="font-heading text-5xl md:text-7xl font-black italic tracking-tighter uppercase leading-[0.8] mb-6">{drop.name}</h1>
+            <h1 className="font-heading text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-black italic tracking-tighter uppercase leading-[0.95] md:leading-[0.85] mb-6 break-words">{drop.name}</h1>
               <p className="text-2xl md:text-3xl font-heading font-black text-white italic tracking-tighter">By <span className="underline decoration-[4px]" style={{ textDecorationColor: accentColor }}>{drop.chef}</span></p>
            </div>
         </div>
       </section>
 
-      <section className="max-w-7xl mx-auto px-6 py-24 grid grid-cols-1 lg:grid-cols-12 gap-20">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 py-16 sm:py-24 grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-20">
         <div className="lg:col-span-7 space-y-20">
           <div>
             <h2 className="text-[10px] font-black uppercase tracking-[0.4em] mb-8 flex items-center gap-4" style={{ color: accentColor }}><span className="w-12 h-1" style={{ backgroundColor: accentColor }} /> The Story</h2>
-            <p className="text-3xl md:text-4xl font-heading font-black leading-[1] mb-8 italic tracking-tighter uppercase text-zinc-100">"{drop.hype_story}"</p>
+            <p className="text-2xl sm:text-3xl md:text-4xl font-heading font-black leading-[1.05] mb-8 italic tracking-tighter uppercase text-zinc-100">"{drop.hype_story}"</p>
             <p className="text-zinc-500 font-bold max-w-2xl leading-relaxed text-sm">{drop.description}</p>
           </div>
 
@@ -214,10 +217,10 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
                   <div key={item.id} className="bg-zinc-950/50 border-l-4 border-zinc-900 pl-6 py-2 space-y-6">
                     <div>
                        <div className="flex justify-between items-end mb-2">
-                          <h4 className="text-xl font-black uppercase italic tracking-tighter text-white">{item.name}</h4>
+                          <h4 className="text-xl font-black uppercase italic tracking-tighter text-white break-words">{item.name}</h4>
                           <span className="text-zinc-500 font-black text-sm">${item.basePrice} Base</span>
                        </div>
-                       <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest">{item.description}</p>
+                       <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest break-words">{item.description}</p>
                     </div>
 
                     <div className="space-y-8">
@@ -269,19 +272,19 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                    <div>
                       <h4 className="text-white font-black uppercase text-xs mb-2 italic">Pickup Location</h4>
-                      <p className="text-zinc-500 text-[11px] font-bold leading-relaxed">{drop.logistics.address}</p>
+                      <p className="text-zinc-500 text-[11px] font-bold leading-relaxed break-words">{drop.logistics.address}</p>
                    </div>
                    <div>
                       <h4 className="text-white font-black uppercase text-xs mb-2 italic">Contact</h4>
-                      <p className="text-zinc-500 text-[11px] font-bold leading-relaxed">{drop.vendor_contact.email}</p>
-                      <p className="text-zinc-400 text-[9px] font-black mt-1 uppercase tracking-widest">{drop.vendor_contact.phone}</p>
+                      <p className="text-zinc-500 text-[11px] font-bold leading-relaxed break-words">{drop.vendor_contact.email}</p>
+                      <p className="text-zinc-400 text-[9px] font-black mt-1 uppercase tracking-widest break-words">{drop.vendor_contact.phone}</p>
                    </div>
                 </div>
              </div>
              
              <div className="pt-6 border-t border-zinc-900">
                 <h4 className="text-white font-black uppercase text-xs mb-3 italic">Pickup Instructions</h4>
-                <div className="text-zinc-500 text-[11px] font-bold leading-relaxed space-y-1">
+                <div className="text-zinc-500 text-[11px] font-bold leading-relaxed space-y-1 break-words">
                    {drop.logistics.instructions.split('\n').map((line, i) => <p key={i}>{line}</p>)}
                 </div>
              </div>
@@ -294,11 +297,11 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
         </div>
 
         <div className="lg:col-span-5 relative">
-          <div className="sticky top-40 bg-white text-black p-8 md:p-10 border-8 border-black shadow-[24px_24px_0px_0px_#00000033]">
+          <div className="lg:sticky lg:top-40 bg-white text-black p-6 sm:p-8 md:p-10 border-8 border-black shadow-[24px_24px_0px_0px_#00000033]">
             <div className="mb-8 space-y-4">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1 block">Order Total</span>
-                <span className="text-6xl font-heading font-black italic tracking-tighter leading-none">${orderTotal.toFixed(2)}</span>
+                <span className="text-4xl sm:text-5xl md:text-6xl font-heading font-black italic tracking-tighter leading-none">${orderTotal.toFixed(2)}</span>
               </div>
               <div className="text-[10px] font-black uppercase tracking-widest text-zinc-600 space-y-2">
                 <div className="flex items-center justify-between">
@@ -313,6 +316,12 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
                   <div className="flex items-center justify-between">
                     <span>Tax</span>
                     <span>${taxAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                {stripeFeeAmount > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span>Stripe Fee</span>
+                    <span>${stripeFeeAmount.toFixed(2)}</span>
                   </div>
                 )}
                 {deliveryFee > 0 && (
@@ -345,7 +354,7 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
 
               {/* UPCOMING STATE - RED AMP LIGHT */}
               {isUpcoming && (
-                  <div className="bg-zinc-950 p-8 text-center space-y-6 border-2 border-zinc-900">
+                  <div className="bg-zinc-950 p-6 sm:p-8 text-center space-y-6 border-2 border-zinc-900">
                       <div className="flex flex-col items-center gap-6">
                           {/* Amplifier Light - Red */}
                           <div className="relative">
@@ -355,8 +364,8 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
                           </div>
                           
                           <h3 className="text-xl font-black uppercase italic tracking-tighter text-zinc-500">Dropping Soon</h3>
-                          <div className="text-4xl md:text-5xl font-mono font-black text-white tracking-widest">
-                              <Countdown targetDate={drop.start_date} prefix="" className="text-4xl md:text-5xl" />
+                          <div className="text-white max-w-full overflow-hidden">
+                              <Countdown targetDate={drop.start_date} prefix="" className="text-[18px] sm:text-2xl md:text-4xl leading-none tracking-[0.12em]" />
                           </div>
                       </div>
                   </div>
@@ -551,6 +560,7 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
         deliveryFee={deliveryFee}
         bookingFee={bookingFee}
         taxAmount={taxAmount}
+        stripeFee={stripeFeeAmount}
         totalPrice={orderTotal}
         isOpen={isCheckoutOpen} 
         onClose={() => setIsCheckoutOpen(false)} 

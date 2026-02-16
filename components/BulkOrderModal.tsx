@@ -118,14 +118,14 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
       <div className="w-full max-w-2xl max-h-[90vh] bg-zinc-950 border-8 border-black relative overflow-hidden shadow-2xl">
         <div className="max-h-[90vh] overflow-y-auto">
         {!isProcessing && (
-          <button onClick={onClose} className="absolute top-8 right-8 text-zinc-700 hover:text-white transition-colors z-10 p-2">
+          <button onClick={onClose} className="absolute top-4 right-4 sm:top-8 sm:right-8 text-zinc-700 hover:text-white transition-colors z-10 p-2">
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M6 18L18 6M6 6l12 12"></path></svg>
           </button>
         )}
 
-        <form onSubmit={handleSubmit} className="p-8 md:p-14 space-y-10">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-8 md:p-14 space-y-8 sm:space-y-10">
           <div className="space-y-2">
-            <h2 className="font-heading text-4xl md:text-5xl font-black italic uppercase tracking-tighter leading-none">Bulk Order</h2>
+            <h2 className="font-heading text-3xl sm:text-4xl md:text-5xl font-black italic uppercase tracking-tighter leading-none">Bulk Order</h2>
             <p className="text-[10px] font-black uppercase tracking-widest text-zinc-500">{drop.name} • {drop.chef}</p>
           </div>
 

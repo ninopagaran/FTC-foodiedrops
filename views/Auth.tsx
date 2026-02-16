@@ -10,6 +10,7 @@ interface AuthProps {
 
 export const Auth: React.FC<AuthProps> = ({ onSuccess, initialMessage }) => {
   const [mode, setMode] = useState<'LOGIN' | 'SIGNUP'>('LOGIN');
+  const [signupRole, setSignupRole] = useState<'customer' | 'vendor'>('customer');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -38,8 +39,12 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, initialMessage }) => {
         onSuccess();
       } else {
         await api.signUpUser(email, password);
-        // In the mock implementation, signUpUser automatically logs the user in.
-        onSuccess();
+        setMessage(
+          signupRole === 'vendor'
+            ? "Check your email to confirm. After you confirm, log in and finish your vendor profile in Seller Studio."
+            : "Check your email to confirm your account."
+        );
+        setMode('LOGIN');
       }
     } catch (error: any) {
       console.error(error);
@@ -69,6 +74,40 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, initialMessage }) => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
+                {mode === 'SIGNUP' && (
+                  <div className="space-y-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">Choose Account Type</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setSignupRole('customer')}
+                        className={`border-2 px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${
+                          signupRole === 'customer'
+                            ? 'bg-white text-black border-white'
+                            : 'bg-transparent text-zinc-400 border-zinc-800 hover:border-white hover:text-white'
+                        }`}
+                      >
+                        Foodie
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSignupRole('vendor')}
+                        className={`border-2 px-4 py-3 text-xs font-black uppercase tracking-widest transition-all ${
+                          signupRole === 'vendor'
+                            ? 'bg-white text-black border-white'
+                            : 'bg-transparent text-zinc-400 border-zinc-800 hover:border-white hover:text-white'
+                        }`}
+                      >
+                        Vendor
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
+                      {signupRole === 'vendor'
+                        ? 'Vendor accounts finish setup in Seller Studio after email confirmation.'
+                        : 'Foodies create accounts to track orders and drops.'}
+                    </p>
+                  </div>
+                )}
                 <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 ml-1">Email Address <span className="text-fuchsia-500">*</span></label>
                     <input 
@@ -94,7 +133,7 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, initialMessage }) => {
                 </div>
 
                 {message && (
-                    <div className={`p-4 text-xs font-bold text-center border-2 ${message.includes('Success') ? 'border-green-500 text-green-400 bg-green-900/20' : 'border-red-500 text-red-400 bg-red-900/20'}`}>
+                    <div className={`p-4 text-xs font-bold text-center border-2 ${message.includes('Success') || message.includes('Check your email') ? 'border-green-500 text-green-400 bg-green-900/20' : 'border-red-500 text-red-400 bg-red-900/20'}`}>
                         {message}
                     </div>
                 )}
@@ -114,6 +153,7 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, initialMessage }) => {
                         setMessage(null);
                         setEmail('');
                         setPassword('');
+                        setSignupRole('customer');
                     }}
                     className="text-fuchsia-500 text-xs font-black uppercase tracking-widest hover:text-white transition-colors border-b-2 border-fuchsia-500 hover:border-white pb-1"
                 >

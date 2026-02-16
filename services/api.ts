@@ -134,6 +134,119 @@ export const getAllProfiles = async (): Promise<Profile[]> => {
     return data as Profile[];
 };
 
+export const getProfilesPaged = async (params: {
+    page: number;
+    pageSize: number;
+    search?: string;
+    role?: 'vendor' | 'customer' | 'admin';
+    status?: 'active' | 'suspended';
+    includeDeleted?: boolean;
+}): Promise<{ data: Profile[]; total: number }> => {
+    const { page, pageSize, search, role, status, includeDeleted } = params;
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase.from('profiles').select('*', { count: 'exact' });
+    if (!includeDeleted) query = query.eq('is_deleted', false);
+    if (status) query = query.eq('status', status);
+    if (role === 'vendor') query = query.eq('is_vendor', true);
+    if (role === 'admin') query = query.eq('is_admin', true);
+    if (role === 'customer') query = query.eq('is_vendor', false).eq('is_admin', false);
+    if (search) {
+        const q = `%${search}%`;
+        query = query.or(`name.ilike.${q},email.ilike.${q},phone.ilike.${q},company.ilike.${q}`);
+    }
+
+    const { data, error, count } = await query.order('name', { ascending: true }).range(from, to);
+    if (error) throw error;
+    return { data: (data as Profile[]) || [], total: count || 0 };
+};
+
+export const updateProfileAdmin = async (userId: string, updates: Partial<Profile>): Promise<Profile> => {
+    const { data, error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', userId)
+        .select()
+        .single();
+    if (error) throw error;
+    return data as Profile;
+};
+
+export const softDeleteProfile = async (userId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('profiles')
+        .update({ is_deleted: true, status: 'suspended' })
+        .eq('id', userId);
+    if (error) throw error;
+};
+
+export const hardDeleteProfileIfNoOrders = async (userId: string): Promise<{ deleted: boolean }> => {
+    const { count, error: countError } = await supabase
+        .from('purchases')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+    if (countError) throw countError;
+    if ((count || 0) > 0) return { deleted: false };
+    const { error } = await supabase.from('profiles').delete().eq('id', userId);
+    if (error) throw error;
+    return { deleted: true };
+};
+
+export const insertAuditLog = async (entry: {
+    action: string;
+    entity_type: string;
+    entity_id?: string;
+    payload?: any;
+}): Promise<void> => {
+    const { error } = await supabase.from('audit_log').insert({
+        action: entry.action,
+        entity_type: entry.entity_type,
+        entity_id: entry.entity_id || null,
+        payload: entry.payload || null
+    });
+    if (error) throw error;
+};
+
+export const logEvent = async (event: { name: string; payload?: any }): Promise<void> => {
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData?.user?.id || null;
+    if (!userId) return;
+    const { error } = await supabase.from('analytics_events').insert({
+        event_name: event.name,
+        user_id: userId,
+        payload: event.payload || null
+    });
+    if (error) throw error;
+};
+
+export const getEventLogPaged = async (params: {
+    page: number;
+    pageSize: number;
+    eventName?: string;
+    sortBy?: 'created_at' | 'user_id';
+    sortDir?: 'asc' | 'desc';
+}): Promise<{ data: any[]; total: number }> => {
+    const { page, pageSize, eventName, sortBy, sortDir } = params;
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    let query = supabase.from('analytics_events').select('*', { count: 'exact' });
+    if (eventName) query = query.eq('event_name', eventName);
+    const { data, error, count } = await query.order(sortBy || 'created_at', { ascending: (sortDir || 'desc') === 'asc' }).range(from, to);
+    if (error) throw error;
+    return { data: data || [], total: count || 0 };
+};
+
+export const getProfilesByIds = async (ids: string[]): Promise<Profile[]> => {
+    if (!ids.length) return [];
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('id,name,email')
+        .in('id', ids);
+    if (error) throw error;
+    return (data as Profile[]) || [];
+};
+
 export const updateProfile = async (userId: string, updates: Partial<Profile>): Promise<Profile> => {
     const { data, error } = await supabase
         .from('profiles')
@@ -237,6 +350,17 @@ export const updateDrop = async (dropId: string, updates: Partial<Drop>): Promis
     return data as Drop;
 };
 
+export const adminUpdateDrop = async (dropId: string, updates: Partial<Drop>): Promise<Drop> => {
+    const { data, error } = await supabase
+        .from('drops')
+        .update(updates)
+        .eq('id', dropId)
+        .select()
+        .single();
+    if (error) throw error;
+    return data as Drop;
+};
+
 export const updateDropApprovalStatus = async (dropId: string, approvalStatus: DropApprovalStatus): Promise<Drop> => {
     const { data, error } = await supabase
         .from('drops')
@@ -285,6 +409,85 @@ export const getPurchasesForVendorDrops = async (dropIds: string[]): Promise<Pur
     return data as Purchase[];
 };
 
+export const getPurchasesPaged = async (params: {
+    page: number;
+    pageSize: number;
+    search?: string;
+    dropId?: string;
+    paymentStatus?: Purchase['payment_status'];
+    orderType?: 'bulk' | 'standard';
+    dateFrom?: string;
+    dateTo?: string;
+    includeDeleted?: boolean;
+    sortBy?: 'drop_name' | 'customer_name' | 'quantity' | 'payment_status' | 'is_bulk' | 'order_notes' | 'total_paid' | 'timestamp';
+    sortDir?: 'asc' | 'desc';
+}): Promise<{ data: Purchase[]; total: number }> => {
+    const { page, pageSize, search, dropId, paymentStatus, orderType, dateFrom, dateTo, includeDeleted, sortBy, sortDir } = params;
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    let query = supabase.from('purchases').select('*', { count: 'exact' });
+    if (!includeDeleted) query = query.eq('is_deleted', false);
+    if (dropId) query = query.eq('drop_id', dropId);
+    if (paymentStatus) query = query.eq('payment_status', paymentStatus);
+    if (orderType === 'bulk') query = query.eq('is_bulk', true);
+    if (orderType === 'standard') query = query.eq('is_bulk', false);
+    if (dateFrom) query = query.gte('timestamp', dateFrom);
+    if (dateTo) query = query.lte('timestamp', dateTo);
+    if (search) {
+        const q = `%${search}%`;
+        query = query.or(`drop_name.ilike.${q},customer_name.ilike.${q},customer_email.ilike.${q},order_notes.ilike.${q}`);
+    }
+    const sortColumn = sortBy || 'timestamp';
+    const { data, error, count } = await query.order(sortColumn, { ascending: (sortDir || 'desc') === 'asc' }).range(from, to);
+    if (error) throw error;
+    return { data: (data as Purchase[]) || [], total: count || 0 };
+};
+
+export const getPurchasesForExport = async (params: {
+    search?: string;
+    dropId?: string;
+    paymentStatus?: Purchase['payment_status'];
+    orderType?: 'bulk' | 'standard';
+    dateFrom?: string;
+    dateTo?: string;
+    includeDeleted?: boolean;
+}): Promise<Purchase[]> => {
+    const { search, dropId, paymentStatus, orderType, dateFrom, dateTo, includeDeleted } = params;
+    let query = supabase.from('purchases').select('*');
+    if (!includeDeleted) query = query.eq('is_deleted', false);
+    if (dropId) query = query.eq('drop_id', dropId);
+    if (paymentStatus) query = query.eq('payment_status', paymentStatus);
+    if (orderType === 'bulk') query = query.eq('is_bulk', true);
+    if (orderType === 'standard') query = query.eq('is_bulk', false);
+    if (dateFrom) query = query.gte('timestamp', dateFrom);
+    if (dateTo) query = query.lte('timestamp', dateTo);
+    if (search) {
+        const q = `%${search}%`;
+        query = query.or(`drop_name.ilike.${q},customer_name.ilike.${q},customer_email.ilike.${q},order_notes.ilike.${q}`);
+    }
+    const { data, error } = await query.order('timestamp', { ascending: false });
+    if (error) throw error;
+    return (data as Purchase[]) || [];
+};
+
+export const updatePurchaseStatusBulk = async (purchaseIds: string[], status: Purchase['payment_status']): Promise<void> => {
+    if (purchaseIds.length === 0) return;
+    const { error } = await supabase
+        .from('purchases')
+        .update({ payment_status: status })
+        .in('id', purchaseIds);
+    if (error) throw error;
+};
+
+export const softDeletePurchases = async (purchaseIds: string[]): Promise<void> => {
+    if (purchaseIds.length === 0) return;
+    const { error } = await supabase
+        .from('purchases')
+        .update({ is_deleted: true })
+        .in('id', purchaseIds);
+    if (error) throw error;
+};
+
 export const getAppSettings = async (): Promise<{ booking_fee_per_package: number }> => {
     const { data, error } = await supabase
         .from('app_settings')
@@ -324,7 +527,9 @@ export const savePurchase = async (drop: Drop, payload: any, bookingFeePerPackag
     const bookingFee = bookingFeePerPackage * payload.quantity;
     const taxRate = Number(drop.tax_rate || 0);
     const taxAmount = (subtotal + deliveryFee + bookingFee) * taxRate;
-    const total = subtotal + deliveryFee + bookingFee + taxAmount;
+    const baseTotal = subtotal + deliveryFee + bookingFee + taxAmount;
+    const stripeFeeAmount = drop.pass_stripe_fee ? (baseTotal * 0.029) + 0.20 : 0;
+    const total = baseTotal + stripeFeeAmount;
 
     const rpcParams = {
         p_drop_id: drop.id,
@@ -332,6 +537,11 @@ export const savePurchase = async (drop: Drop, payload: any, bookingFeePerPackag
         p_customer_name: payload.customerName,
         p_customer_email: payload.customerEmail,
         p_quantity: payload.quantity,
+        p_subtotal: subtotal,
+        p_tax_rate: taxRate,
+        p_tax_amount: taxAmount,
+        p_booking_fee: bookingFee,
+        p_stripe_fee_amount: stripeFeeAmount,
         p_total_paid: total,
         p_delivery_requested: payload.deliveryRequested,
         p_delivery_address: payload.deliveryAddress || null,

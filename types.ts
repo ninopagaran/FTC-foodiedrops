@@ -32,6 +32,9 @@ export interface Profile {
   name: string;
   email: string;
   phone?: string;
+  company?: string;
+  status?: 'active' | 'suspended';
+  is_deleted?: boolean;
   is_vendor: boolean;
   is_admin: boolean;
 }
@@ -99,6 +102,9 @@ export interface Purchase {
   tax_rate?: number;
   tax_amount?: number;
   booking_fee?: number;
+  stripe_fee_amount?: number;
+  pass_stripe_fee?: boolean;
+  is_deleted?: boolean;
   timestamp: string;
   total_paid: number;
   order_notes?: string;
@@ -136,10 +142,13 @@ export interface Drop {
   end_date: string;
   price: number;
   tax_rate?: number;
+  pass_stripe_fee?: boolean;
   total_quantity: number;
   quantity_remaining: number;
   status: DropStatus;
   approval_status: DropApprovalStatus;
+  rejection_reason?: string;
+  revision_requested?: boolean;
   type: DropType;
   category: string;
   description: string;

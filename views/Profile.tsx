@@ -126,14 +126,14 @@ export const Profile: React.FC<ProfileProps> = ({ user, purchases, onLogout, onB
   };
 
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-6 md:p-16">
+    <div className="min-h-screen bg-[#050505] text-white p-4 sm:p-6 md:p-16">
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-16 gap-8">
           <div className="flex items-center gap-6">
             <button onClick={onBack} className="bg-fuchsia-600 text-black p-3 hover:bg-white transition-all shadow-[4px_4px_0px_0px_#fff]">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M10 19l-7-7 7-7"></path></svg>
             </button>
-            <h1 className="font-heading text-5xl font-black italic uppercase tracking-tighter leading-none">Your Profile</h1>
+            <h1 className="font-heading text-3xl sm:text-4xl md:text-5xl font-black italic uppercase tracking-tighter leading-none">Your Profile</h1>
           </div>
           <Button onClick={onLogout} variant="danger" size="sm" className="bg-zinc-900 border-2 border-zinc-800 text-zinc-600 hover:text-white hover:bg-red-600 hover:border-red-600 shadow-none hover:shadow-lg">
             Log Out
@@ -151,7 +151,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, purchases, onLogout, onB
                 {user.username && (
                   <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">@{user.username}</p>
                 )}
-                <p className="text-zinc-600 text-[10px] font-black uppercase tracking-widest">{user.email}</p>
+                <p className="text-zinc-600 text-[10px] font-black uppercase tracking-widest break-words">{user.email}</p>
               </div>
               <div className="grid grid-cols-2 gap-8 text-center pt-8 border-t border-zinc-900">
                 <div>
@@ -257,7 +257,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, purchases, onLogout, onB
                       <div className="flex-1 w-full">
                         <div className="flex justify-between items-start mb-4">
                           <div>
-                            <h4 className="text-xl font-heading font-black italic uppercase tracking-tighter">{p.drop_name}</h4>
+                            <h4 className="text-lg sm:text-xl font-heading font-black italic uppercase tracking-tighter break-words">{p.drop_name}</h4>
                             <span className="text-[9px] font-black text-zinc-600 uppercase tracking-widest">ORDER ID: {p.id}</span>
                           </div>
                           <div className="text-right">
@@ -270,6 +270,11 @@ export const Profile: React.FC<ProfileProps> = ({ user, purchases, onLogout, onB
                            <p><strong>Timestamp:</strong> {new Date(p.timestamp).toLocaleString()}</p>
                            <p><strong>Quantity:</strong> {p.quantity}</p>
                            <p><strong>Payment:</strong> {p.payment_status?.toUpperCase?.() || 'PENDING'}</p>
+                           <p><strong>Subtotal:</strong> ${Number(p.subtotal || 0).toFixed(2)}</p>
+                           <p><strong>Booking Fee:</strong> ${Number(p.booking_fee || 0).toFixed(2)}</p>
+                           <p><strong>Tax:</strong> ${Number(p.tax_amount || 0).toFixed(2)}</p>
+                           {p.stripe_fee_amount && p.stripe_fee_amount > 0 && <p><strong>Stripe Fee:</strong> ${Number(p.stripe_fee_amount || 0).toFixed(2)}</p>}
+                           {p.delivery_fee && p.delivery_fee > 0 && <p><strong>Delivery Fee:</strong> ${Number(p.delivery_fee || 0).toFixed(2)}</p>}
                            {p.is_bulk && <p><strong>Type:</strong> BULK</p>}
                            {p.delivery_requested && <p className="text-fuchsia-500"><strong>Fulfillment:</strong> DELIVERY</p>}
                            {p.order_notes && <p><strong>Notes:</strong> {p.order_notes}</p>}

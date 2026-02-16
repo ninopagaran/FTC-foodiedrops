@@ -24,8 +24,54 @@ const BRAND_COLORS = [
   { name: 'Cyber Mint', value: '#6ee7b7' },
   { name: 'Gold Leaf', value: '#eab308' },
 ];
+const CUISINES = [
+  'American',
+  'Pizza',
+  'Italian',
+  'Mexican',
+  'Tex-Mex',
+  'Asian Fast Casual',
+  'Chinese',
+  'Japanese',
+  'Thai',
+  'Indian',
+  'Mediterranean',
+  'Burgers',
+  'Sandwiches',
+  'BBQ',
+  'Vietnamese',
+  'Korean',
+  'Healthy',
+  'Salads',
+  'Bowls',
+  'Middle Eastern',
+  'Breakfast',
+  'Brunch',
+  'Spanish',
+  'Tapas',
+  'Caribbean',
+  'Jamaican',
+  'Latin American',
+  'Peruvian',
+  'Vegan / Plant-Based',
+  'Other'
+];
 
 export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdate, onBack, onSave, existingDrops }) => {
+  if (!user.isVendor) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center p-8 text-center">
+        <div className="w-24 h-24 bg-fuchsia-500 text-black flex items-center justify-center font-bold text-5xl skew-x-[-12deg] mb-10 shadow-[8px_8px_0px_0px_#fff]">s</div>
+        <h1 className="font-heading text-3xl sm:text-4xl md:text-5xl font-black italic uppercase tracking-tighter mb-4">Vendor Access Only</h1>
+        <p className="text-zinc-500 font-bold uppercase tracking-widest max-w-xl mb-10">
+          Foodie accounts are for ordering. Vendor accounts are for restaurants and require a separate email.
+        </p>
+        <Button size="lg" onClick={onBack}>
+          Back to Drops
+        </Button>
+      </div>
+    );
+  }
   const [step, setStep] = useState(1);
   const [activeTab, setActiveTab] = useState<'BUILD' | 'MANIFEST'>('BUILD');
   const [submissionResult, setSubmissionResult] = useState<string | null>(null);
@@ -33,6 +79,33 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
   const [lastSubmittedId, setLastSubmittedId] = useState<string | null>(null);
   const [taxRateInput, setTaxRateInput] = useState('0');
   const [numberInputMap, setNumberInputMap] = useState<Record<string, string>>({});
+  const [optionPriceVisibility, setOptionPriceVisibility] = useState<Record<string, boolean>>({});
+  const [cuisineOpen, setCuisineOpen] = useState(false);
+  const [cuisineQuery, setCuisineQuery] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const stripeBaseEstimate = useMemo(() => {
+    const menuBase = (formData.menu_items || []).reduce((acc, item) => acc + (item.basePrice || 0), 0);
+    const base = (formData.price || 0) > 0 ? Number(formData.price || 0) : menuBase;
+    return Math.max(0, base);
+  }, [formData.price, formData.menu_items]);
+
+  const stripeBaseTotalEstimate = useMemo(() => {
+    const basePrice = stripeBaseEstimate;
+    const bookingFee = 0;
+    const deliveryFee = 0;
+    const taxRate = Number(formData.tax_rate || 0);
+    return (basePrice + bookingFee + deliveryFee) * (1 + taxRate);
+  }, [stripeBaseEstimate, formData.tax_rate]);
+
+  const stripeFeeEstimate = useMemo(() => (stripeBaseTotalEstimate * 0.029) + 0.20, [stripeBaseTotalEstimate]);
+
+  const navigateToDrops = () => {
+    window.location.hash = '/';
+    setTimeout(() => {
+      document.getElementById('feature-strip')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+  };
   
   // Default to a placeholder image, but allow user to upload their own immediately
   const [imagePreview, setImagePreview] = useState<string>('https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=800');
@@ -60,7 +133,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
     return {
       name: '',
       chef: user.name || '', // Default to the user's name/brand
-      category: '',
+      category: 'American',
       price: 0, 
       tax_rate: 0,
       total_quantity: 50,
@@ -75,6 +148,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
       accent_color: '#d946ef', 
       delivery_available: false,
       delivery_fee: 5,
+      pass_stripe_fee: false,
       stripe_payment_link: '', // CRITICAL FIX: Initialize payment link field
       menu_items: [],
       quantity_tiers: [],
@@ -209,6 +283,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
           const file = e.target.files[0];
           setImageFile(file);
           setImagePreview(URL.createObjectURL(file));
+          setFormError(null);
       }
   }
 
@@ -291,6 +366,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                   name: 'Option',
                   additionalPrice: 0
                 };
+                setOptionPriceVisibility(prev => ({ ...prev, [newOption.id]: false }));
                 return { ...group, options: [...group.options, newOption] };
               }
               return group;
@@ -331,7 +407,12 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
     }
 
     if (!imageFile && !formData.image) {
-      return alert("Please upload an image for your drop.");
+      setFormError("Please upload an image for your drop.");
+      setStep(1);
+      window.setTimeout(() => {
+        document.getElementById('drop-image-input')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+      return;
     }
     
     setIsPublishing(true);
@@ -366,6 +447,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
       setLastSubmittedId(dropId);
       // FIX: Explicitly pass 'true' to indicate this is a new drop, preventing the app from thinking it's an update because of the ID.
       await onSave(newDrop, true);
+      api.logEvent({ name: 'drop_created', payload: { drop_id: dropId, user_id: user.id } }).catch(() => {});
     } catch (e) {
       console.error("Publishing error:", e);
       alert("Submission error. Please verify and try again.");
@@ -416,7 +498,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
 
   // ... (Remainder of render is identical, just need to close the component)
   return (
-    <div className="min-h-screen bg-[#050505] text-white p-6 md:p-16">
+    <div className="min-h-screen bg-[#050505] text-white p-4 sm:p-6 md:p-16">
       {submissionResult && (
         <div className="fixed top-6 right-6 z-[9999] w-full max-w-md">
           <div className="bg-zinc-950 border-4 border-white shadow-[10px_10px_0px_0px_#d946ef] p-5 animate-in slide-in-from-top-6 duration-300">
@@ -443,10 +525,37 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                   <Button size="sm" className="bg-fuchsia-500 text-black" onClick={handleReturnToStudio}>
                     New Drop
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => { setSubmissionResult(null); setActiveTab('MANIFEST'); }}>
+                  <Button size="sm" variant="outline" onClick={() => { setSubmissionResult(null); navigateToDrops(); }}>
                     View Drops
                   </Button>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {formError && (
+        <div className="fixed top-6 left-1/2 z-[9999] w-full max-w-md -translate-x-1/2">
+          <div className="bg-zinc-950 border-4 border-red-500 shadow-[10px_10px_0px_0px_#7f1d1d] p-5 animate-in slide-in-from-top-6 duration-300">
+            <div className="flex items-start gap-4">
+              <div className="w-10 h-10 bg-red-500 text-black flex items-center justify-center shadow-[3px_3px_0px_0px_#fff] shrink-0">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M12 9v4m0 4h.01M10.29 3.86l-8.4 14.5A1 1 0 002.7 20h18.6a1 1 0 00.86-1.5l-8.4-14.5a1 1 0 00-1.73 0z"></path></svg>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.3em] text-red-400">Missing Info</p>
+                    <h3 className="font-heading text-2xl font-black italic uppercase tracking-tighter text-white">Image Required</h3>
+                  </div>
+                  <button
+                    onClick={() => setFormError(null)}
+                    className="text-zinc-500 hover:text-white transition-colors"
+                    aria-label="Close"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M6 18L18 6M6 6l12 12"></path></svg>
+                  </button>
+                </div>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mt-2">{formError}</p>
               </div>
             </div>
           </div>
@@ -459,7 +568,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
               <button onClick={onBack} className="bg-fuchsia-600 text-black p-3 hover:bg-white transition-all shadow-[4px_4px_0px_0px_#fff]">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M10 19l-7-7 7-7"></path></svg>
               </button>
-              <h1 className="font-heading text-5xl font-black italic uppercase tracking-tighter leading-none">Restaurant Studio</h1>
+              <h1 className="font-heading text-3xl sm:text-4xl md:text-5xl font-black italic uppercase tracking-tighter leading-none">Restaurant Studio</h1>
             </div>
             <p className="text-zinc-500 font-bold uppercase tracking-widest text-[11px] ml-20">Your direct line to the marketplace.</p>
           </div>
@@ -474,7 +583,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
 
         {!user.isVendor ? (
           <div className="max-w-3xl mx-auto bg-zinc-950 border-8 border-fuchsia-500/20 p-12 md:p-20 text-center animate-in fade-in duration-500">
-            <h2 className="font-heading text-4xl md:text-6xl font-black italic uppercase tracking-tighter leading-none mb-6">Become a Vendor</h2>
+            <h2 className="font-heading text-3xl sm:text-4xl md:text-6xl font-black italic uppercase tracking-tighter leading-none mb-6">Become a Vendor</h2>
             <p className="text-zinc-500 font-bold uppercase tracking-widest mb-12 max-w-md mx-auto">Complete your brand profile to start creating drops.</p>
             <div className="space-y-8 mb-12">
               <div className="text-left space-y-2">
@@ -526,9 +635,59 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                         <input className="w-full bg-zinc-950 border-4 border-zinc-900 p-6 font-black uppercase italic tracking-tighter text-2xl focus:border-fuchsia-500 outline-none transition-all placeholder-zinc-800" value={formData.chef} onChange={e => setFormData({...formData, chef: e.target.value})} />
                       </div>
                     </div>
+                    <div className="space-y-3">
+                      <label className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-500">Cuisine <span className="text-fuchsia-500">*</span></label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={cuisineOpen ? cuisineQuery : (formData.category || 'American')}
+                          onFocus={() => {
+                            setCuisineQuery(formData.category || 'American');
+                            setCuisineOpen(true);
+                          }}
+                          onChange={(e) => {
+                            setCuisineQuery(e.target.value);
+                            setCuisineOpen(true);
+                          }}
+                          onBlur={() => {
+                            window.setTimeout(() => setCuisineOpen(false), 120);
+                          }}
+                          placeholder="Type to search cuisines"
+                          className="w-full bg-zinc-950 border-4 border-zinc-900 px-5 py-4 font-black uppercase tracking-widest text-sm focus:border-fuchsia-500 outline-none"
+                        />
+                        {cuisineOpen && (
+                          <div className="absolute z-50 mt-2 w-full max-h-56 overflow-y-auto bg-black border-2 border-zinc-800 shadow-2xl">
+                            {CUISINES.filter(c => c.toLowerCase().includes(cuisineQuery.toLowerCase())).map((c) => (
+                              <button
+                                key={c}
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setFormData({ ...formData, category: c });
+                                  setCuisineQuery('');
+                                  setCuisineOpen(false);
+                                }}
+                                className={`w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-widest ${
+                                  (formData.category || 'American') === c
+                                    ? 'bg-fuchsia-500 text-black'
+                                    : 'text-zinc-300 hover:bg-zinc-900'
+                                }`}
+                              >
+                                {c}
+                              </button>
+                            ))}
+                            {CUISINES.filter(c => c.toLowerCase().includes(cuisineQuery.toLowerCase())).length === 0 && (
+                              <div className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                                No matches
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                      <div className="space-y-4">
                         <label className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-500">Drop Image <span className="text-fuchsia-500">*</span></label>
-                        <input type="file" required accept="image/*" onChange={handleImageChange} className="w-full bg-zinc-950 border-4 border-zinc-900 p-6 file:mr-4 file:py-2 file:px-4 file:border-0 file:text-xs file:font-black file:uppercase file:tracking-widest file:bg-fuchsia-500 file:text-black hover:file:bg-white" />
+                        <input id="drop-image-input" type="file" required accept="image/*" onChange={handleImageChange} className="w-full bg-zinc-950 border-4 border-zinc-900 p-6 file:mr-4 file:py-2 file:px-4 file:border-0 file:text-xs file:font-black file:uppercase file:tracking-widest file:bg-fuchsia-500 file:text-black hover:file:bg-white" />
                     </div>
                     <div className="space-y-6 pt-6">
                       <label className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-500 block">Accent Color</label>
@@ -643,19 +802,43 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                                          </div>
                                       </div>
 
-                                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                      <div className="space-y-3">
                                          {group.options.map((opt) => (
-                                           <div key={opt.id} className="flex gap-2">
-                                              <input className="bg-zinc-900 p-3 text-[11px] font-bold flex-1" value={opt.name} onChange={e => updateModifierOption(item.id, group.id, opt.id, { name: e.target.value })} />
-                                              <input
-                                                type="number"
-                                                min={1}
-                                                step="0.01"
-                                                className="w-20 bg-zinc-900 p-3 text-[11px] font-black text-fuchsia-500"
-                                                value={getNumberInputValue(`opt:${opt.id}:price`, opt.additionalPrice)}
-                                                onChange={e => handleDecimalChange(`opt:${opt.id}:price`, e.target.value, (val) => updateModifierOption(item.id, group.id, opt.id, { additionalPrice: val }))}
-                                                onBlur={() => handleDecimalBlur(`opt:${opt.id}:price`, 1, (val) => updateModifierOption(item.id, group.id, opt.id, { additionalPrice: val }))}
-                                              />
+                                           <div key={opt.id} className="flex flex-col md:flex-row gap-2 items-start md:items-center">
+                                              <input className="bg-zinc-900 p-3 text-[11px] font-bold flex-1 w-full" value={opt.name} onChange={e => updateModifierOption(item.id, group.id, opt.id, { name: e.target.value })} />
+                                              <div className="flex items-center gap-2">
+                                                {(optionPriceVisibility[opt.id] || opt.additionalPrice > 0) ? (
+                                                  <>
+                                                    <input
+                                                      type="number"
+                                                      min={1}
+                                                      step="0.01"
+                                                      className="w-28 bg-zinc-900 p-3 text-[11px] font-black text-fuchsia-500"
+                                                      value={getNumberInputValue(`opt:${opt.id}:price`, opt.additionalPrice)}
+                                                      onChange={e => handleDecimalChange(`opt:${opt.id}:price`, e.target.value, (val) => updateModifierOption(item.id, group.id, opt.id, { additionalPrice: val }))}
+                                                      onBlur={() => handleDecimalBlur(`opt:${opt.id}:price`, 1, (val) => updateModifierOption(item.id, group.id, opt.id, { additionalPrice: val }))}
+                                                    />
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setOptionPriceVisibility(prev => ({ ...prev, [opt.id]: false }));
+                                                        updateModifierOption(item.id, group.id, opt.id, { additionalPrice: 0 });
+                                                      }}
+                                                      className="text-[9px] font-black uppercase tracking-widest text-zinc-500 hover:text-white"
+                                                    >
+                                                      Remove Price
+                                                    </button>
+                                                  </>
+                                                ) : (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => setOptionPriceVisibility(prev => ({ ...prev, [opt.id]: true }))}
+                                                    className="text-[9px] font-black uppercase tracking-widest text-fuchsia-400 border border-fuchsia-500/30 px-3 py-2 hover:bg-fuchsia-500 hover:text-black transition-colors"
+                                                  >
+                                                    Add Price
+                                                  </button>
+                                                )}
+                                              </div>
                                            </div>
                                          ))}
                                          <button onClick={() => addModifierOption(item.id, group.id)} className="border-2 border-dashed border-zinc-800 text-zinc-600 text-[9px] font-black uppercase tracking-widest hover:text-white py-3">+ Add Option</button>
@@ -728,8 +911,45 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                         />
                       </div>
                       <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black uppercase tracking-widest text-zinc-500 pointer-events-none">
-                        Delivery disabled
+                        Delivery coming soon
                       </div>
+                    </div>
+
+                    <div className="bg-zinc-950 border-4 border-zinc-900 p-8 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-xl font-black uppercase italic tracking-tighter text-white">Stripe Fees</h3>
+                            <span className="relative group">
+                              <span className="w-4 h-4 inline-flex items-center justify-center rounded-full border border-zinc-600 text-[10px] font-black text-zinc-300">i</span>
+                              <span className="absolute left-0 top-6 z-50 hidden group-hover:block w-64 bg-black border border-zinc-700 p-3 text-[10px] font-bold uppercase tracking-widest text-zinc-300">
+                                Stripe charges 2.9% + $0.20 per transaction. Turn this on to pass the fee to customers.
+                              </span>
+                            </span>
+                          </div>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mt-1">2.9% + $0.20 per transaction</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setFormData({ ...formData, pass_stripe_fee: !formData.pass_stripe_fee })}
+                          className={`w-14 h-8 flex items-center p-1 border-2 transition-colors ${
+                            formData.pass_stripe_fee ? 'bg-fuchsia-500 border-fuchsia-500' : 'bg-zinc-800 border-zinc-700'
+                          }`}
+                        >
+                          <div className={`w-6 h-6 bg-black transition-transform ${formData.pass_stripe_fee ? 'translate-x-6' : ''}`} />
+                        </button>
+                      </div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
+                        {formData.pass_stripe_fee
+                          ? 'Customer pays the Stripe fee at checkout.'
+                          : 'Vendor absorbs the Stripe fee.'}
+                      </p>
+                      <p className="text-[10px] text-zinc-600 font-bold">
+                        Estimated customer subtotal (1 qty): ${stripeBaseTotalEstimate.toFixed(2)}. Stripe fee: ${stripeFeeEstimate.toFixed(2)}.
+                      </p>
+                      <p className="text-[10px] text-zinc-600 font-bold">
+                        Estimate includes tax. Booking fee and delivery (if enabled later) are not included.
+                      </p>
                     </div>
 
                     <div className="bg-zinc-950 border-4 border-zinc-900 p-8 space-y-4">
@@ -860,7 +1080,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                     <div className="bg-zinc-950 border-4 border-zinc-900 p-8 space-y-10">
                        <div className="flex justify-between items-end border-b-2 border-zinc-900 pb-6">
                           <div>
-                             <h2 className="font-heading text-4xl font-black italic uppercase mb-2">{selectedDropManifest.name} Orders</h2>
+                             <h2 className="font-heading text-3xl sm:text-4xl font-black italic uppercase mb-2">{selectedDropManifest.name} Orders</h2>
                              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Contact: {selectedDropManifest.vendor_contact.email} / {selectedDropManifest.vendor_contact.phone}</span>
                           </div>
                           <div className="text-right">

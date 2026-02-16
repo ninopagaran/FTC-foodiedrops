@@ -92,13 +92,13 @@ export const DropCard: React.FC<DropCardProps> = ({ drop, onClick }) => {
 
       {/* Content */}
       <div className="p-6">
-        <div className="flex justify-between items-start mb-2">
-          <h3 className={`font-heading text-2xl font-black uppercase leading-[0.9] tracking-tighter transition-colors italic ${isSoldOut ? 'text-zinc-500 line-through decoration-red-500 decoration-4' : 'group-hover:text-white'}`} style={!isSoldOut ? { color: accentColor } : {}}>
+        <div className="flex justify-between items-start gap-3 mb-2 min-w-0">
+          <h3 className={`font-heading text-2xl font-black uppercase leading-[0.95] tracking-tighter transition-colors italic break-words max-w-[70%] ${isSoldOut ? 'text-zinc-500 line-through decoration-red-500 decoration-4' : 'group-hover:text-white'}`} style={!isSoldOut ? { color: accentColor } : {}}>
             {drop.name}
           </h3>
-          <span className={`text-xl font-heading font-black border-b-2 ${isSoldOut ? 'text-zinc-600 border-zinc-800' : 'text-white'}`} style={!isSoldOut ? { borderColor: accentColor } : {}}>${drop.price}</span>
+          <span className={`text-xl font-heading font-black border-b-2 shrink-0 ${isSoldOut ? 'text-zinc-600 border-zinc-800' : 'text-white'}`} style={!isSoldOut ? { borderColor: accentColor } : {}}>${drop.price}</span>
         </div>
-        <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-4">{drop.chef} • {drop.location}</p>
+        <p className="text-zinc-500 text-xs font-bold uppercase tracking-widest mb-4 break-words">{drop.chef} • {drop.location}</p>
         
         <div className="pt-4 border-t border-zinc-900 h-8 flex items-center">
           {isUpcoming && <Countdown targetDate={drop.start_date} prefix="🔔" className="text-violet-400" />}

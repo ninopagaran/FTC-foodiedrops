@@ -10,7 +10,6 @@ import { InfluenceLab } from './views/InfluenceLab';
 import { AdminDashboard } from './views/AdminDashboard';
 import { Auth } from './views/Auth';
 import * as api from './services/api';
-import { Button } from './components/Button';
 
 const parseRoute = (hash: string) => {
   const isAuthCallback = hash.includes('access_token=') || hash.includes('type=signup');
@@ -52,12 +51,6 @@ const App: React.FC = () => {
   
   const [isLoading, setIsLoading] = useState(true);
 
-  // Auth form state
-  const [authMode, setAuthMode] = useState<'LOGIN' | 'SIGNUP'>('LOGIN');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [authMessage, setAuthMessage] = useState<string | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(false);
 
   const fetchDrops = async (viewer: User | null, updateLoading = true) => {
     try {
@@ -201,43 +194,14 @@ const App: React.FC = () => {
   };
 
   const selectedDrop = useMemo(() => drops.find(d => d.id === route.id), [drops, route.id]);
-  const cartCount = useMemo(() => userPurchases.reduce((sum, p) => sum + p.quantity, 0), [userPurchases]);
 
   const handleAuthSuccess = () => {
       navigate('/profile');
   };
 
-  const handleLogin = () => {
-    navigate('/login');
-  };
-
   const handleLogout = async () => {
     await api.logoutUser();
     navigate('/');
-  };
-
-  const handleStudioAuthAction = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !password) {
-      setAuthMessage("Email and password are required.");
-      return;
-    }
-    setIsAuthLoading(true);
-    setAuthMessage(null);
-    try {
-      if (authMode === 'LOGIN') {
-          await api.loginUser(email, password);
-      } else { // SIGNUP
-        await api.signUpUser(email, password);
-        setAuthMessage("Account created! Logging you in...");
-        setAuthMode('LOGIN');
-      }
-    } catch (error: any) {
-      console.error(`${authMode} failed:`, error);
-      setAuthMessage(error.message || "Authentication failed.");
-    } finally {
-      setIsAuthLoading(false);
-    }
   };
 
   const handleSaveDrop = async (dropData: Partial<Drop>, isNewOverride?: boolean) => {
@@ -331,68 +295,16 @@ const App: React.FC = () => {
       case 'AUTH':
         return user ? <Profile user={user} purchases={userPurchases} onLogout={handleLogout} onBack={() => navigate('/')} onProfileUpdate={refreshUser} /> : <Auth onSuccess={handleAuthSuccess} initialMessage={route.confirm ? 'Email confirmed. Please log in.' : undefined} />;
       case 'STUDIO':
-        if (user) {
-          return <SellerStudio user={user} onProfileUpdate={refreshUser} onBack={() => navigate('/')} onSave={handleSaveDrop} existingDrops={vendorDrops} />;
+        if (!user) {
+          navigate('/login');
+          return null;
         }
-        return (
-          <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center">
-            <div className="w-full max-w-md mx-auto">
-              <div className="w-24 h-24 bg-fuchsia-500 text-black flex items-center justify-center font-bold text-5xl skew-x-[-12deg] mb-12 shadow-[8px_8px_0px_0px_#fff] mx-auto">s</div>
-              <h1 className="font-heading text-5xl font-black italic uppercase tracking-tighter mb-4">Restaurant Studio</h1>
-              <p className="text-zinc-500 font-bold uppercase tracking-widest mb-10">{authMode === 'LOGIN' ? 'Log in to continue' : 'Create your vendor account'}</p>
-              
-              <form onSubmit={handleStudioAuthAction} className="space-y-6">
-                <div className="space-y-2 text-left">
-                  <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Email <span className="text-fuchsia-500">*</span></label>
-                <input 
-                  type="email" 
-                  placeholder="EMAIL" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-zinc-900 border-4 border-black p-6 font-black uppercase italic tracking-tighter text-2xl outline-none focus:border-fuchsia-500 placeholder-zinc-700"
-                  required
-                />
-                </div>
-                <div className="space-y-2 text-left">
-                  <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Password <span className="text-fuchsia-500">*</span></label>
-                <input 
-                  type="password" 
-                  placeholder="PASSWORD"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-zinc-900 border-4 border-black p-6 font-black uppercase italic tracking-tighter text-2xl outline-none focus:border-fuchsia-500 placeholder-zinc-700"
-                  required
-                />
-                </div>
-
-                {authMessage && (
-                  <div className={`p-4 text-sm font-bold text-center border-2 ${authMessage.includes('failed') ? 'text-red-400 bg-red-900/50 border-red-500' : 'text-green-400 bg-green-900/50 border-green-500'}`}>
-                    {authMessage}
-                  </div>
-                )}
-
-                <Button size="xl" type="submit" isLoading={isAuthLoading} className="w-full">
-                  {authMode === 'LOGIN' ? 'Log In' : 'Sign Up'}
-                </Button>
-              </form>
-
-              <p className="mt-8 text-sm">
-                {authMode === 'LOGIN' ? "Don't have an account? " : "Already have an account? "}
-                <button 
-                  onClick={() => {
-                    setAuthMode(authMode === 'LOGIN' ? 'SIGNUP' : 'LOGIN');
-                    setAuthMessage(null);
-                    setEmail('');
-                    setPassword('');
-                  }} 
-                  className="font-bold text-fuchsia-500 hover:underline"
-                >
-                  {authMode === 'LOGIN' ? 'Sign Up' : 'Log In'}
-                </button>
-              </p>
-            </div>
-          </div>
-        );
+        if (!user.isVendor) {
+          alert('Foodie accounts are for ordering. Vendor accounts are for restaurants and require a separate email.');
+          navigate('/profile');
+          return null;
+        }
+        return <SellerStudio user={user} onProfileUpdate={refreshUser} onBack={() => navigate('/')} onSave={handleSaveDrop} existingDrops={vendorDrops} />;
       case 'PROFILE':
         return user ? <Profile user={user} purchases={userPurchases} onLogout={handleLogout} onBack={() => navigate('/')} onProfileUpdate={refreshUser} /> : <Auth onSuccess={handleAuthSuccess} />;
       case 'INFLUENCE':
@@ -409,9 +321,7 @@ const App: React.FC = () => {
       {route.view !== 'STUDIO' && route.view !== 'ADMIN' && route.view !== 'AUTH' && (
         <Header 
           user={user} 
-          onLogin={handleLogin} 
           onLogout={handleLogout}
-          cartCount={cartCount} 
         />
       )}
       <main>

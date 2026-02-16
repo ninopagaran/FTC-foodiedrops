@@ -34,6 +34,7 @@ const getInitialState = (initialData?: Drop | null): Partial<Drop> => {
     hype_story: '',
     location: '',
     stripe_payment_link: '',
+    pass_stripe_fee: false,
   };
 };
 
@@ -141,6 +142,19 @@ export const AdminDropForm: React.FC<AdminDropFormProps> = ({ isOpen, onClose, o
           <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-400">Stripe Payment Link (Optional)</label>
               <input name="stripe_payment_link" value={formData.stripe_payment_link || ''} onChange={handleChange} placeholder="https://buy.stripe.com/..." className="w-full bg-zinc-900 border border-zinc-800 p-3 font-mono" />
+          </div>
+
+          <div className="flex items-center justify-between bg-zinc-900 border border-zinc-800 p-4">
+            <div>
+              <div className="text-xs font-bold text-zinc-300">Pass Stripe Fee to Customer</div>
+              <div className="text-[10px] text-zinc-500 uppercase">2.9% + $0.20 per transaction</div>
+            </div>
+            <input
+              type="checkbox"
+              checked={!!formData.pass_stripe_fee}
+              onChange={(e) => setFormData(prev => ({ ...prev, pass_stripe_fee: e.target.checked }))}
+              className="h-5 w-5 accent-fuchsia-500"
+            />
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
