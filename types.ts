@@ -134,6 +134,7 @@ export interface WaitlistEntry {
 export interface Drop {
   id: string;
   creator_id: string;
+  is_deleted?: boolean;
   name: string;
   chef: string;
   image: string;

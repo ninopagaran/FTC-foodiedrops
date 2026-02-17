@@ -125,6 +125,7 @@ CREATE TABLE IF NOT EXISTS public.drops (
   delivery_available BOOLEAN DEFAULT false,
   delivery_fee NUMERIC,
   pass_stripe_fee BOOLEAN DEFAULT false,
+  is_deleted BOOLEAN NOT NULL DEFAULT false,
   coordinates JSONB,
   logistics JSONB,
   vendor_contact JSONB,
@@ -203,6 +204,9 @@ ALTER TABLE public.drops
 
 ALTER TABLE public.drops
   ADD COLUMN IF NOT EXISTS pass_stripe_fee BOOLEAN DEFAULT false;
+
+ALTER TABLE public.drops
+  ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT false;
 
 ALTER TABLE public.purchases
   ADD COLUMN IF NOT EXISTS subtotal NUMERIC;

@@ -39,18 +39,28 @@ const mapSessionToUser = (sessionUser: { id: string; email?: string | null }): U
     };
 };
 
+const isActiveProfile = (profile: Profile | null): profile is Profile => {
+    if (!profile) return false;
+    if (profile.is_deleted) return false;
+    if (profile.status === 'suspended') return false;
+    return true;
+};
+
 // --- AUTH ---
 
 export const onAuthChange = (callback: (user: User | null) => void): (() => void) => {
   const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     if (session?.user) {
-      // Fast path: set a basic user immediately to avoid UI lag.
-      callback(mapSessionToUser(session.user));
-      // Hydrate profile in background.
       getProfile(session.user.id).then((profile) => {
-        if (profile) callback(mapProfileToUser(profile));
+        if (!isActiveProfile(profile)) {
+          supabase.auth.signOut().catch(() => {});
+          callback(null);
+          return;
+        }
+        callback(mapProfileToUser(profile));
       }).catch((error) => {
         console.error("Profile fetch failed:", error);
+        callback(null);
       });
     } else {
       callback(null);
@@ -67,9 +77,11 @@ export const getCurrentUser = async (): Promise<User | null> => {
   if (!session?.user) return null;
 
   const profile = await getProfile(session.user.id);
-  if (profile) return mapProfileToUser(profile);
-
-  return mapSessionToUser(session.user);
+  if (!isActiveProfile(profile)) {
+    await supabase.auth.signOut();
+    return null;
+  }
+  return mapProfileToUser(profile);
 };
 
 export const loginUser = async (email: string, pass: string) => {
@@ -78,6 +90,11 @@ export const loginUser = async (email: string, pass: string) => {
     password: pass
   });
   if (error) throw error;
+  const profile = await getProfile(data.user.id);
+  if (!isActiveProfile(profile)) {
+    await supabase.auth.signOut();
+    throw new Error('This account has been deactivated.');
+  }
   return data.user;
 };
 
@@ -286,6 +303,7 @@ export const getApprovedDrops = async (): Promise<Drop[]> => {
         .from('drops')
         .select('*')
         .eq('approval_status', DropApprovalStatus.APPROVED)
+        .eq('is_deleted', false)
         .order('start_date', { ascending: true });
         
     if (error) {
@@ -301,6 +319,7 @@ export const getVendorDrops = async (vendorId: string): Promise<Drop[]> => {
         .from('drops')
         .select('*')
         .eq('creator_id', vendorId)
+        .eq('is_deleted', false)
         .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -311,6 +330,7 @@ export const getAllDrops = async (): Promise<Drop[]> => {
     const { data, error } = await supabase
         .from('drops')
         .select('*')
+        .eq('is_deleted', false)
         .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -359,6 +379,14 @@ export const adminUpdateDrop = async (dropId: string, updates: Partial<Drop>): P
         .single();
     if (error) throw error;
     return data as Drop;
+};
+
+export const adminDeleteDrop = async (dropId: string): Promise<void> => {
+    const { error } = await supabase
+        .from('drops')
+        .update({ is_deleted: true, approval_status: DropApprovalStatus.REJECTED })
+        .eq('id', dropId);
+    if (error) throw error;
 };
 
 export const updateDropApprovalStatus = async (dropId: string, approvalStatus: DropApprovalStatus): Promise<Drop> => {

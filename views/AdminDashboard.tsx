@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Drop, DropApprovalStatus, DropStatus, Profile, Purchase } from '../types';
 import { Button } from '../components/Button';
 import * as api from '../services/api';
@@ -8,6 +8,7 @@ interface AdminDashboardProps {
   allDrops: Drop[];
   onApproveDrop: (dropId: string) => void;
   onRejectDrop: (dropId: string) => void;
+  onRefreshDrops: () => void | Promise<void>;
   onBack: () => void;
 }
 
@@ -15,6 +16,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   allDrops,
   onApproveDrop,
   onRejectDrop,
+  onRefreshDrops,
   onBack,
 }) => {
   const getDropStatusTag = (drop: Drop) => {
@@ -28,17 +30,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (drop.approval_status === DropApprovalStatus.APPROVED) return { label: 'Approved', cls: 'text-blue-400 bg-blue-500/10 border-blue-500/30' };
     return { label: 'Draft', cls: 'text-zinc-400 bg-zinc-800/60 border-zinc-700' };
   };
-  const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY' | 'CUSTOMERS' | 'VENDORS' | 'ORDERS' | 'TRANSACTIONS' | 'EVENTS' | 'SETTINGS'>('PENDING');
+  const [activeTab, setActiveTab] = useState<'PENDING' | 'HISTORY' | 'USERS' | 'ORDERS' | 'TRANSACTIONS' | 'EVENTS' | 'SETTINGS'>('PENDING');
   const [searchQuery, setSearchQuery] = useState('');
   const [customers, setCustomers] = useState<Profile[]>([]);
   const [customerTotal, setCustomerTotal] = useState(0);
   const [customerPage, setCustomerPage] = useState(1);
   const [customerRole, setCustomerRole] = useState<'vendor' | 'customer' | 'admin' | ''>('');
   const [customerStatus, setCustomerStatus] = useState<'active' | 'suspended' | ''>('');
-  const [vendors, setVendors] = useState<Profile[]>([]);
-  const [vendorTotal, setVendorTotal] = useState(0);
-  const [vendorPage, setVendorPage] = useState(1);
-
   const [orders, setOrders] = useState<Purchase[]>([]);
   const [ordersTotal, setOrdersTotal] = useState(0);
   const [orderPage, setOrderPage] = useState(1);
@@ -82,6 +80,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [editingDrop, setEditingDrop] = useState<Drop | null>(null);
   const [showDropEditor, setShowDropEditor] = useState(false);
   const [rejectingDrop, setRejectingDrop] = useState<Drop | null>(null);
+  const [confirmDeleteDrop, setConfirmDeleteDrop] = useState<Drop | null>(null);
   const [rejectMode, setRejectMode] = useState<'reject' | 'revise'>('reject');
   const [rejectReason, setRejectReason] = useState('');
 
@@ -92,42 +91,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (activeTab !== 'CUSTOMERS') return;
-    api.getProfilesPaged({
-      page: customerPage,
-      pageSize: 10,
-      search: searchQuery,
-      role: customerRole || undefined,
-      status: customerStatus || undefined,
-      includeDeleted: false
-    }).then(({ data, total }) => {
+  const loadCustomers = useCallback(async () => {
+    try {
+      const { data, total } = await api.getProfilesPaged({
+        page: customerPage,
+        pageSize: 10,
+        search: searchQuery,
+        role: customerRole || undefined,
+        status: customerStatus || undefined,
+        includeDeleted: false
+      });
       setCustomers(data);
       setCustomerTotal(total);
-    }).catch((error) => {
+    } catch (error) {
       console.error('Failed to load customers', error);
       setCustomers([]);
       setCustomerTotal(0);
-    });
-  }, [activeTab, customerPage, customerRole, customerStatus, searchQuery]);
+    }
+  }, [customerPage, customerRole, customerStatus, searchQuery]);
 
   useEffect(() => {
-    if (activeTab !== 'VENDORS') return;
-    api.getProfilesPaged({
-      page: vendorPage,
-      pageSize: 10,
-      search: searchQuery,
-      role: 'vendor',
-      includeDeleted: false
-    }).then(({ data, total }) => {
-      setVendors(data);
-      setVendorTotal(total);
-    }).catch((error) => {
-      console.error('Failed to load vendors', error);
-      setVendors([]);
-      setVendorTotal(0);
-    });
-  }, [activeTab, vendorPage, searchQuery]);
+    if (activeTab !== 'USERS') return;
+    loadCustomers();
+  }, [activeTab, loadCustomers]);
 
   useEffect(() => {
     if (activeTab !== 'ORDERS') return;
@@ -354,8 +340,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <button onClick={() => setActiveTab('PENDING')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'PENDING' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Pending</button>
             <button onClick={() => setActiveTab('HISTORY')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'HISTORY' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Package History</button>
             <button onClick={() => setActiveTab('ORDERS')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'ORDERS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Orders</button>
-            <button onClick={() => setActiveTab('CUSTOMERS')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'CUSTOMERS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Customers</button>
-            <button onClick={() => setActiveTab('VENDORS')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'VENDORS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Vendors</button>
+            <button onClick={() => setActiveTab('USERS')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'USERS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Users</button>
             <button onClick={() => setActiveTab('TRANSACTIONS')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'TRANSACTIONS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Transactions</button>
             <button onClick={() => setActiveTab('EVENTS')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'EVENTS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Event Log</button>
             <button onClick={() => setActiveTab('SETTINGS')} className={`px-5 py-2 text-[10px] font-black uppercase tracking-widest ${activeTab === 'SETTINGS' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}>Settings</button>
@@ -370,8 +355,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onChange={(e) => setSearchQuery(e.target.value)}
           />
           <div className="text-[9px] uppercase tracking-widest text-zinc-500 font-black">
-            {activeTab === 'CUSTOMERS' && `${customerTotal} customers`}
-            {activeTab === 'VENDORS' && `${vendorTotal} vendors`}
+            {activeTab === 'USERS' && `${customerTotal} users`}
             {activeTab === 'ORDERS' && `${ordersTotal} orders`}
           </div>
         </div>
@@ -465,6 +449,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         setRejectMode('revise');
                         setRejectReason('');
                       }}>Send Back</Button>
+                      <Button size="sm" variant="danger" className="shadow-none" onClick={() => setConfirmDeleteDrop(drop)}>
+                        Delete
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -523,7 +510,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <table className="w-full text-left">
                 <thead className="border-b border-zinc-900">
                   <tr>
-                    {['Drop Name', 'Menu', 'Total Sold', 'Revenue', 'Drop Date', 'Status', 'Edit'].map((h) => (
+                    {['Drop Name', 'Menu', 'Total Sold', 'Revenue', 'Drop Date', 'Status', 'Edit', 'Delete'].map((h) => (
                       <th key={h} className="p-4 text-[10px] font-black uppercase tracking-widest text-zinc-500">{h}</th>
                     ))}
                   </tr>
@@ -571,12 +558,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             {isEditable ? 'Edit' : 'Locked'}
                           </Button>
                         </td>
+                        <td className="p-4 text-xs">
+                          <Button size="sm" variant="danger" className="shadow-none" onClick={() => setConfirmDeleteDrop(drop)}>
+                            Delete
+                          </Button>
+                        </td>
                       </tr>
                     );
                   })}
                   {reviewedDrops.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="p-12 text-center text-zinc-500 font-bold uppercase tracking-widest">No reviewed packages</td>
+                      <td colSpan={8} className="p-12 text-center text-zinc-500 font-bold uppercase tracking-widest">No reviewed packages</td>
                     </tr>
                   )}
                 </tbody>
@@ -585,7 +577,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
         )}
 
-        {activeTab === 'CUSTOMERS' && (
+        {activeTab === 'USERS' && (
           <div className="space-y-4">
             <div className="flex flex-wrap gap-3">
               <select
@@ -596,7 +588,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value="">All Roles</option>
                 <option value="customer">Customer</option>
                 <option value="vendor">Vendor</option>
-                <option value="admin">Admin</option>
               </select>
               <select
                 className="bg-zinc-950 border border-zinc-800 px-3 py-2 text-[10px] font-black uppercase tracking-widest"
@@ -662,6 +653,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         >
                           Edit
                         </button>
+                        {c.is_vendor && (
+                          <button
+                            className="text-yellow-400 hover:text-white"
+                            onClick={async () => {
+                              setViewingVendor(c);
+                              try {
+                                const drops = await api.getVendorDrops(c.id);
+                                setVendorDrops(drops);
+                              } catch (e) {
+                                console.error('Failed to load vendor drops', e);
+                                setVendorDrops([]);
+                              }
+                            }}
+                          >
+                            Drops
+                          </button>
+                        )}
                         <button
                           className="text-red-400 hover:text-white"
                           onClick={() => setConfirmDeleteCustomer(c)}
@@ -685,76 +693,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-400" onClick={() => setCustomerPage(Math.max(1, customerPage - 1))}>Prev</Button>
                 <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-400" onClick={() => setCustomerPage(customerPage + 1)}>Next</Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'VENDORS' && (
-          <div className="space-y-4">
-            <div className="bg-zinc-950 border border-zinc-900 overflow-x-auto">
-              <table className="w-full text-left">
-                <thead className="border-b border-zinc-900">
-                  <tr>
-                    {['Name', 'Email', 'Phone', 'Company', 'Status', 'Actions'].map((h) => (
-                      <th key={h} className="p-4 text-[10px] font-black uppercase tracking-widest text-zinc-500">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-900">
-                  {vendors.map((v) => (
-                    <tr key={v.id} className="hover:bg-zinc-900/50 transition-colors">
-                      <td className="p-4 font-bold text-sm text-white">{v.name}</td>
-                      <td className="p-4 text-xs font-mono text-zinc-400">{v.email}</td>
-                      <td className="p-4 text-xs text-zinc-400">{v.phone || '—'}</td>
-                      <td className="p-4 text-xs text-zinc-400">{v.company || '—'}</td>
-                      <td className="p-4 text-[10px] font-black uppercase">
-                        <span className={v.status === 'suspended' ? 'text-red-400' : 'text-green-400'}>
-                          {v.status || 'active'}
-                        </span>
-                      </td>
-                      <td className="p-4 text-[10px] font-black uppercase space-x-2">
-                        <button
-                          className="text-blue-400 hover:text-white"
-                          onClick={async () => {
-                            setViewingVendor(v);
-                            try {
-                              const drops = await api.getVendorDrops(v.id);
-                              setVendorDrops(drops);
-                            } catch (e) {
-                              console.error('Failed to load vendor drops', e);
-                              setVendorDrops([]);
-                            }
-                          }}
-                        >
-                          View
-                        </button>
-                        <button
-                          className="text-fuchsia-400 hover:text-white"
-                          onClick={() => {
-                            setEditingCustomer(v);
-                            setCustomerForm(v);
-                          }}
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {vendors.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="p-12 text-center text-zinc-500 font-bold uppercase tracking-widest">No vendors found</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-zinc-500">
-              <span>Page {vendorPage}</span>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-400" onClick={() => setVendorPage(Math.max(1, vendorPage - 1))}>Prev</Button>
-                <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-400" onClick={() => setVendorPage(vendorPage + 1)}>Next</Button>
               </div>
             </div>
           </div>
@@ -1389,7 +1327,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   await api.updateProfileAdmin(editingCustomer.id, customerForm);
                   await api.insertAuditLog({ action: 'update_user', entity_type: 'profile', entity_id: editingCustomer.id, payload: customerForm });
                   setEditingCustomer(null);
-                  setCustomerPage(1);
+                  await loadCustomers();
                 } catch (e) {
                   console.error('Failed to update user', e);
                   alert('Unable to update user.');
@@ -1414,11 +1352,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     await api.softDeleteProfile(confirmDeleteCustomer.id);
                   }
                   await api.insertAuditLog({ action: 'delete_user', entity_type: 'profile', entity_id: confirmDeleteCustomer.id, payload: { hard: result.deleted } });
+                  if (viewingCustomer?.id === confirmDeleteCustomer.id) {
+                    setViewingCustomer(null);
+                    setCustomerPurchases([]);
+                  }
+                  if (viewingVendor?.id === confirmDeleteCustomer.id) {
+                    setViewingVendor(null);
+                    setVendorDrops([]);
+                  }
                   setConfirmDeleteCustomer(null);
-                  setCustomerPage(1);
+                  await loadCustomers();
                 } catch (e) {
                   console.error('Failed to delete user', e);
                   alert('Unable to delete user.');
+                }
+              }}>Delete</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteDrop && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-6">
+          <div className="w-full max-w-md bg-zinc-950 border-4 border-red-600 p-6 space-y-4">
+            <h3 className="text-xl font-black uppercase tracking-widest text-red-400">Delete Package?</h3>
+            <p className="text-sm text-zinc-400">
+              This will remove the drop from all admin, vendor, and customer views immediately.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" size="sm" className="border-zinc-700 text-zinc-400" onClick={() => setConfirmDeleteDrop(null)}>Cancel</Button>
+              <Button size="sm" variant="danger" className="shadow-none" onClick={async () => {
+                try {
+                  await api.adminDeleteDrop(confirmDeleteDrop.id);
+                  await api.insertAuditLog({ action: 'delete_drop', entity_type: 'drop', entity_id: confirmDeleteDrop.id });
+                  setVendorDrops((prev) => prev.filter((d) => d.id !== confirmDeleteDrop.id));
+                  setConfirmDeleteDrop(null);
+                  await onRefreshDrops();
+                } catch (e) {
+                  console.error('Failed to delete drop', e);
+                  alert('Unable to delete drop.');
                 }
               }}>Delete</Button>
             </div>
@@ -1596,9 +1568,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <td className="p-4 text-xs text-zinc-400">{d.quantity_remaining}/{d.total_quantity}</td>
                         <td className="p-4 text-xs text-zinc-400">${Number(d.price).toFixed(2)}</td>
                         <td className="p-4 text-xs">
-                          <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-400" disabled={d.approval_status !== DropApprovalStatus.PENDING} onClick={() => { setEditingDrop(d); setShowDropEditor(true); }}>
-                            {d.approval_status === DropApprovalStatus.PENDING ? 'Edit' : 'Locked'}
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="outline" className="border-zinc-700 text-zinc-400" disabled={d.approval_status !== DropApprovalStatus.PENDING} onClick={() => { setEditingDrop(d); setShowDropEditor(true); }}>
+                              {d.approval_status === DropApprovalStatus.PENDING ? 'Edit' : 'Locked'}
+                            </Button>
+                            <Button size="sm" variant="danger" className="shadow-none" onClick={() => setConfirmDeleteDrop(d)}>
+                              Delete
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1665,6 +1642,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               await api.adminUpdateDrop(editingDrop.id, updates);
               await api.insertAuditLog({ action: 'edit_drop', entity_type: 'drop', entity_id: editingDrop.id, payload: updates });
               setShowDropEditor(false);
+              await onRefreshDrops();
             } catch (e) {
               console.error('Update drop failed', e);
               alert('Unable to update drop.');

@@ -50,6 +50,7 @@ const App: React.FC = () => {
   const [bookingFeePerPackage, setBookingFeePerPackage] = useState(0);
   
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
 
   const fetchDrops = async (viewer: User | null, updateLoading = true) => {
@@ -117,7 +118,10 @@ const App: React.FC = () => {
         console.error("Bootstrap auth failed:", e);
       } finally {
         window.clearTimeout(timeoutId);
-        if (isMounted) setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+          setIsAuthReady(true);
+        }
       }
     };
 
@@ -125,33 +129,41 @@ const App: React.FC = () => {
 
     // Auth listener
     const unsubscribe = api.onAuthChange(async (authUser) => {
-      if (authUser) {
-        setUser(authUser);
-        try {
-          const settings = await api.getAppSettings();
-          setBookingFeePerPackage(settings.booking_fee_per_package);
-        } catch (e) {
-          console.error("Failed to load app settings:", e);
-          setBookingFeePerPackage(0);
+      setIsLoading(true);
+      try {
+        if (authUser) {
+          setUser(authUser);
+          try {
+            const settings = await api.getAppSettings();
+            setBookingFeePerPackage(settings.booking_fee_per_package);
+          } catch (e) {
+            console.error("Failed to load app settings:", e);
+            setBookingFeePerPackage(0);
+          }
+          await fetchDrops(authUser, false);
+          try {
+              const purchases = await api.getPurchasesByUser(authUser.id);
+              setUserPurchases(purchases);
+          } catch (e) {
+              console.error("Error fetching purchases:", e);
+          }
+        } else {
+          setUser(null);
+          setUserPurchases([]);
+          try {
+            const settings = await api.getAppSettings();
+            setBookingFeePerPackage(settings.booking_fee_per_package);
+          } catch (e) {
+            console.error("Failed to load app settings:", e);
+            setBookingFeePerPackage(0);
+          }
+          await fetchDrops(null, false);
         }
-        await fetchDrops(authUser, false);
-        try {
-            const purchases = await api.getPurchasesByUser(authUser.id);
-            setUserPurchases(purchases);
-        } catch (e) {
-            console.error("Error fetching purchases:", e);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+          setIsAuthReady(true);
         }
-      } else {
-        setUser(null);
-        setUserPurchases([]);
-        try {
-          const settings = await api.getAppSettings();
-          setBookingFeePerPackage(settings.booking_fee_per_package);
-        } catch (e) {
-          console.error("Failed to load app settings:", e);
-          setBookingFeePerPackage(0);
-        }
-        await fetchDrops(null, false);
       }
     });
 
@@ -310,7 +322,10 @@ const App: React.FC = () => {
       case 'INFLUENCE':
         return <InfluenceLab user={user} drops={drops} onBack={() => navigate('/')} onLogin={handleLogin} />;
       case 'ADMIN':
-        return user?.isAdmin ? <AdminDashboard allDrops={adminDrops} onApproveDrop={handleApproveDrop} onRejectDrop={handleRejectDrop} onBack={() => navigate('/')} /> : <Home user={user} drops={drops} onSelectDrop={(id) => navigate(`/drop/${id}`)} onPartnerClick={() => navigate('/studio')} />;
+        if (!isAuthReady || isLoading) {
+          return <div className="min-h-screen flex items-center justify-center bg-[#050505] text-white"><p className="text-2xl font-black italic uppercase tracking-widest animate-pulse">Loading Admin...</p></div>;
+        }
+        return user?.isAdmin ? <AdminDashboard allDrops={adminDrops} onApproveDrop={handleApproveDrop} onRejectDrop={handleRejectDrop} onRefreshDrops={() => fetchDrops(user, false)} onBack={() => navigate('/')} /> : <Home user={user} drops={drops} onSelectDrop={(id) => navigate(`/drop/${id}`)} onPartnerClick={() => navigate('/studio')} />;
       default:
         return <Home user={user} drops={drops} onSelectDrop={(id) => navigate(`/drop/${id}`)} onPartnerClick={() => navigate('/studio')} />;
     }
