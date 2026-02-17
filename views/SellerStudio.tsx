@@ -84,22 +84,6 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
   const [cuisineQuery, setCuisineQuery] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
 
-  const stripeBaseEstimate = useMemo(() => {
-    const menuBase = (formData.menu_items || []).reduce((acc, item) => acc + (item.basePrice || 0), 0);
-    const base = (formData.price || 0) > 0 ? Number(formData.price || 0) : menuBase;
-    return Math.max(0, base);
-  }, [formData.price, formData.menu_items]);
-
-  const stripeBaseTotalEstimate = useMemo(() => {
-    const basePrice = stripeBaseEstimate;
-    const bookingFee = 0;
-    const deliveryFee = 0;
-    const taxRate = Number(formData.tax_rate || 0);
-    return (basePrice + bookingFee + deliveryFee) * (1 + taxRate);
-  }, [stripeBaseEstimate, formData.tax_rate]);
-
-  const stripeFeeEstimate = useMemo(() => (stripeBaseTotalEstimate * 0.029) + 0.20, [stripeBaseTotalEstimate]);
-
   const navigateToDrops = () => {
     window.location.hash = '/';
     setTimeout(() => {
@@ -165,6 +149,22 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
   };
 
   const [formData, setFormData] = useState<Partial<Drop>>(getInitialFormData());
+
+  const stripeBaseEstimate = useMemo(() => {
+    const menuBase = (formData.menu_items || []).reduce((acc, item) => acc + (item.basePrice || 0), 0);
+    const base = (formData.price || 0) > 0 ? Number(formData.price || 0) : menuBase;
+    return Math.max(0, base);
+  }, [formData.price, formData.menu_items]);
+
+  const stripeBaseTotalEstimate = useMemo(() => {
+    const basePrice = stripeBaseEstimate;
+    const bookingFee = 0;
+    const deliveryFee = 0;
+    const taxRate = Number(formData.tax_rate || 0);
+    return (basePrice + bookingFee + deliveryFee) * (1 + taxRate);
+  }, [stripeBaseEstimate, formData.tax_rate]);
+
+  const stripeFeeEstimate = useMemo(() => (stripeBaseTotalEstimate * 0.029) + 0.20, [stripeBaseTotalEstimate]);
 
   useEffect(() => {
     const percent = Number(formData.tax_rate || 0) * 100;
