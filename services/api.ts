@@ -84,21 +84,45 @@ export const getCurrentUser = async (): Promise<User | null> => {
   return mapProfileToUser(profile);
 };
 
-export const loginUser = async (email: string, pass: string) => {
+export const loginUser = async (email: string, pass: string): Promise<User> => {
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password: pass
   });
   if (error) throw error;
-  const profile = await getProfile(data.user.id);
+  const requestedRole = String((data.user.user_metadata as any)?.requested_role || '').toLowerCase();
+  let profile = await getProfile(data.user.id);
+  if (!profile) {
+    const { error: profileError } = await supabase.from('profiles').insert({
+      id: data.user.id,
+      email: data.user.email || email,
+      username: (data.user.email || email).split('@')[0],
+      name: (data.user.email || email).split('@')[0],
+      is_vendor: requestedRole === 'vendor',
+      is_admin: false
+    });
+    if (!profileError) {
+      profile = await getProfile(data.user.id);
+    }
+  }
+  // Reconcile legacy rows: if auth metadata indicates vendor, ensure profile reflects it.
+  if (profile && requestedRole === 'vendor' && !profile.is_vendor) {
+    const { error: vendorUpdateError } = await supabase
+      .from('profiles')
+      .update({ is_vendor: true })
+      .eq('id', data.user.id);
+    if (!vendorUpdateError) {
+      profile = await getProfile(data.user.id);
+    }
+  }
   if (!isActiveProfile(profile)) {
     await supabase.auth.signOut();
     throw new Error('This account has been deactivated.');
   }
-  return data.user;
+  return mapProfileToUser(profile);
 };
 
-export const signUpUser = async (email: string, pass: string) => {
+export const signUpUser = async (email: string, pass: string, role: 'customer' | 'vendor' = 'customer') => {
   const { data: roleData, error: roleError } = await supabase
     .rpc('check_email_role', { p_email: email });
   if (!roleError && roleData?.exists) {
@@ -108,20 +132,25 @@ export const signUpUser = async (email: string, pass: string) => {
   const { data, error } = await supabase.auth.signUp({
     email,
     password: pass,
+    options: {
+      data: {
+        requested_role: role
+      }
+    }
   });
   
   if (error) throw error;
   
   // Create profile entry only if session is active (RLS allows insert for auth.uid()).
   if (data.session?.user) {
-    const { error: profileError } = await supabase.from('profiles').insert({
+    const { error: profileError } = await supabase.from('profiles').upsert({
       id: data.session.user.id,
       email: email,
       username: email.split('@')[0],
       name: email.split('@')[0],
-      is_vendor: false,
+      is_vendor: role === 'vendor',
       is_admin: false
-    });
+    }, { onConflict: 'id' });
     if (profileError) console.error("Error creating profile:", profileError);
   }
   
