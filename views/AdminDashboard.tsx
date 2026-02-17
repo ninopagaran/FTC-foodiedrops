@@ -1311,10 +1311,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <input className="bg-black border border-zinc-800 p-3 text-sm font-bold" placeholder="Email" value={customerForm.email || ''} onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })} />
               <input className="bg-black border border-zinc-800 p-3 text-sm font-bold" placeholder="Phone" value={customerForm.phone || ''} onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })} />
               <input className="bg-black border border-zinc-800 p-3 text-sm font-bold" placeholder="Company" value={customerForm.company || ''} onChange={(e) => setCustomerForm({ ...customerForm, company: e.target.value })} />
-              <select className="bg-black border border-zinc-800 p-3 text-[10px] font-black uppercase tracking-widest" value={customerForm.is_vendor ? 'vendor' : 'customer'} onChange={(e) => setCustomerForm({ ...customerForm, is_vendor: e.target.value === 'vendor' })}>
-                <option value="customer">Customer</option>
-                <option value="vendor">Vendor</option>
-              </select>
+              <div className="bg-black border border-zinc-800 p-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center">
+                Role: {editingCustomer.is_admin ? 'Admin' : editingCustomer.is_vendor ? 'Vendor' : 'Customer'}
+              </div>
               <select className="bg-black border border-zinc-800 p-3 text-[10px] font-black uppercase tracking-widest" value={customerForm.status || 'active'} onChange={(e) => setCustomerForm({ ...customerForm, status: e.target.value as any })}>
                 <option value="active">Active</option>
                 <option value="suspended">Suspended</option>
@@ -1324,8 +1323,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <Button variant="outline" size="sm" className="border-zinc-700 text-zinc-400" onClick={() => setEditingCustomer(null)}>Cancel</Button>
               <Button size="sm" className="bg-fuchsia-500 text-black" onClick={async () => {
                 try {
-                  await api.updateProfileAdmin(editingCustomer.id, customerForm);
-                  await api.insertAuditLog({ action: 'update_user', entity_type: 'profile', entity_id: editingCustomer.id, payload: customerForm });
+                  const { is_vendor, is_admin, ...safeUpdates } = customerForm;
+                  await api.updateProfileAdmin(editingCustomer.id, safeUpdates);
+                  await api.insertAuditLog({ action: 'update_user', entity_type: 'profile', entity_id: editingCustomer.id, payload: safeUpdates });
                   setEditingCustomer(null);
                   await loadCustomers();
                 } catch (e) {

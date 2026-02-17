@@ -316,6 +316,46 @@ CREATE TRIGGER log_auth_signup
 AFTER INSERT ON auth.users
 FOR EACH ROW EXECUTE FUNCTION public.log_auth_signup();
 
+-- Ensure profile exists at auth signup, including requested role metadata.
+CREATE OR REPLACE FUNCTION public.ensure_profile_on_auth_signup()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+DECLARE
+  requested_role TEXT;
+  requested_vendor BOOLEAN;
+BEGIN
+  requested_role := lower(COALESCE(NEW.raw_user_meta_data->>'requested_role', 'customer'));
+  requested_vendor := (requested_role = 'vendor');
+
+  INSERT INTO public.profiles (id, email, username, name, is_vendor, is_admin)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    split_part(COALESCE(NEW.email, ''), '@', 1),
+    split_part(COALESCE(NEW.email, ''), '@', 1),
+    requested_vendor,
+    false
+  )
+  ON CONFLICT (id) DO UPDATE
+  SET
+    email = EXCLUDED.email,
+    username = COALESCE(public.profiles.username, EXCLUDED.username),
+    name = COALESCE(public.profiles.name, EXCLUDED.name),
+    is_vendor = (COALESCE(public.profiles.is_vendor, false) OR EXCLUDED.is_vendor);
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS ensure_profile_on_auth_signup ON auth.users;
+CREATE TRIGGER ensure_profile_on_auth_signup
+AFTER INSERT ON auth.users
+FOR EACH ROW EXECUTE FUNCTION public.ensure_profile_on_auth_signup();
+
 CREATE OR REPLACE FUNCTION public.log_vendor_signup()
 RETURNS trigger
 LANGUAGE plpgsql

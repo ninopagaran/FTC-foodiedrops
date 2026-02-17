@@ -4,7 +4,7 @@ import { Button } from '../components/Button';
 import * as api from '../services/api';
 
 interface AuthProps {
-  onSuccess: () => void;
+  onSuccess: (destination?: 'profile' | 'studio') => void;
   initialMessage?: string;
 }
 
@@ -35,10 +35,10 @@ export const Auth: React.FC<AuthProps> = ({ onSuccess, initialMessage }) => {
 
     try {
       if (mode === 'LOGIN') {
-        await api.loginUser(email, password);
-        onSuccess();
+        const loggedInUser = await api.loginUser(email, password);
+        onSuccess(loggedInUser.isVendor ? 'studio' : 'profile');
       } else {
-        await api.signUpUser(email, password);
+        await api.signUpUser(email, password, signupRole);
         setMessage(
           signupRole === 'vendor'
             ? "Check your email to confirm. After you confirm, log in and finish your vendor profile in Seller Studio."

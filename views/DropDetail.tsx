@@ -21,7 +21,7 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [isQuickCheckoutLoading, setIsQuickCheckoutLoading] = useState(false);
   const [deliveryRequested, setDeliveryRequested] = useState(false);
-  const [distanceEligibility] = useState<'IDLE' | 'CHECKING' | 'ELIGIBLE' | 'OUT_OF_RANGE' | 'ERROR'>('IDLE');
+  const [distanceEligibility, setDistanceEligibility] = useState<'IDLE' | 'CHECKING' | 'ELIGIBLE' | 'OUT_OF_RANGE' | 'ERROR'>('IDLE');
 
   useEffect(() => {
     setQtyInput(String(qty));

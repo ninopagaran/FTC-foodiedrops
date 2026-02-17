@@ -207,8 +207,12 @@ const App: React.FC = () => {
 
   const selectedDrop = useMemo(() => drops.find(d => d.id === route.id), [drops, route.id]);
 
-  const handleAuthSuccess = () => {
-      navigate('/profile');
+  const handleAuthSuccess = (destination: 'profile' | 'studio' = 'profile') => {
+      navigate(destination === 'studio' ? '/studio' : '/profile');
+  };
+
+  const handleLogin = () => {
+    navigate('/login');
   };
 
   const handleLogout = async () => {
