@@ -1347,11 +1347,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <Button variant="outline" size="sm" className="border-zinc-700 text-zinc-400" onClick={() => setConfirmDeleteCustomer(null)}>Cancel</Button>
               <Button size="sm" variant="danger" className="shadow-none" onClick={async () => {
                 try {
-                  const result = await api.hardDeleteProfileIfNoOrders(confirmDeleteCustomer.id);
-                  if (!result.deleted) {
-                    await api.softDeleteProfile(confirmDeleteCustomer.id);
-                  }
-                  await api.insertAuditLog({ action: 'delete_user', entity_type: 'profile', entity_id: confirmDeleteCustomer.id, payload: { hard: result.deleted } });
+                  await api.adminDeleteUserReleaseEmail(confirmDeleteCustomer.id);
+                  await api.insertAuditLog({ action: 'delete_user', entity_type: 'profile', entity_id: confirmDeleteCustomer.id, payload: { released_email: true } });
                   if (viewingCustomer?.id === confirmDeleteCustomer.id) {
                     setViewingCustomer(null);
                     setCustomerPurchases([]);

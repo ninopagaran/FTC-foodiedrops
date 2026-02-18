@@ -74,7 +74,8 @@ BEGIN
   SELECT id, is_vendor, is_admin
   INTO v_profile
   FROM public.profiles
-  WHERE email = p_email
+  WHERE lower(email) = lower(p_email)
+    AND COALESCE(is_deleted, false) = false
   LIMIT 1;
 
   IF v_profile IS NULL THEN
@@ -86,6 +87,44 @@ BEGIN
     'is_vendor', COALESCE(v_profile.is_vendor, false),
     'is_admin', COALESCE(v_profile.is_admin, false)
   );
+END;
+$$;
+
+-- Admin user deletion flow that preserves history while freeing original email for re-signup.
+CREATE OR REPLACE FUNCTION public.admin_delete_user_release_email(p_user_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth
+SET row_security = off
+AS $$
+DECLARE
+  v_is_admin BOOLEAN;
+  v_tombstone_email TEXT;
+BEGIN
+  SELECT is_admin INTO v_is_admin FROM public.profiles WHERE id = auth.uid();
+  IF COALESCE(v_is_admin, false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'Unauthorized: admin required.';
+  END IF;
+
+  v_tombstone_email := 'deleted+' || replace(p_user_id::TEXT, '-', '') || '@foodiedrops.invalid';
+
+  UPDATE public.profiles
+  SET
+    is_deleted = true,
+    status = 'suspended',
+    email = v_tombstone_email,
+    username = NULL
+  WHERE id = p_user_id;
+
+  UPDATE auth.users
+  SET
+    email = v_tombstone_email,
+    raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || jsonb_build_object(
+      'deleted_by_admin', true,
+      'deleted_at', now()::text
+    )
+  WHERE id = p_user_id;
 END;
 $$;
 

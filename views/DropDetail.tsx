@@ -92,6 +92,22 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
   const baseTotal = calculatedSubtotal + deliveryFee + bookingFee + taxAmount;
   const stripeFeeAmount = drop.pass_stripe_fee ? (baseTotal * 0.029) + 0.20 : 0;
   const orderTotal = baseTotal + stripeFeeAmount;
+  const orderSummaryItems = useMemo(() => {
+    const items: Array<{ label: string; amount: number }> = [
+      { label: 'Subtotal', amount: calculatedSubtotal },
+      { label: 'Booking Fee', amount: bookingFee },
+    ];
+    if (taxAmount > 0) {
+      items.push({ label: 'Tax', amount: taxAmount });
+    }
+    if (stripeFeeAmount > 0) {
+      items.push({ label: 'Stripe Fee', amount: stripeFeeAmount });
+    }
+    if (deliveryFee > 0) {
+      items.push({ label: 'Delivery Fee', amount: deliveryFee });
+    }
+    return items;
+  }, [calculatedSubtotal, bookingFee, taxAmount, stripeFeeAmount, deliveryFee]);
 
   const validateSelections = () => {
     for (const item of drop.menu_items) {
@@ -214,11 +230,11 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
              <h3 className="text-xl font-black uppercase italic tracking-tighter border-b-4 pb-4 border-zinc-900 inline-block">The Menu</h3>
              <div className="space-y-12">
                 {drop.menu_items.map((item) => (
-                  <div key={item.id} className="bg-zinc-950/50 border-l-4 border-zinc-900 pl-6 py-2 space-y-6">
+                  <div key={item.id} className="bg-zinc-950/50 border-l-4 border-zinc-900 px-6 py-5 space-y-6">
                     <div>
-                       <div className="flex justify-between items-end mb-2">
-                          <h4 className="text-xl font-black uppercase italic tracking-tighter text-white break-words">{item.name}</h4>
-                          <span className="text-zinc-500 font-black text-sm">${item.basePrice} Base</span>
+                       <div className="flex flex-wrap items-baseline gap-3 mb-2">
+                          <h4 className="text-xl font-black uppercase italic tracking-tighter leading-none text-white break-words">{item.name}</h4>
+                          <span className="text-zinc-500 font-black text-sm leading-none">${item.basePrice} Base</span>
                        </div>
                        <p className="text-zinc-600 text-[10px] font-bold uppercase tracking-widest break-words">{item.description}</p>
                     </div>
@@ -226,7 +242,7 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
                     <div className="space-y-8">
                        {item.modifierGroups.map((group) => (
                          <div key={group.id} className="space-y-3">
-                            <div className="flex justify-between items-center">
+                            <div className="flex flex-wrap items-center gap-2">
                                <div className="flex items-center gap-2">
                                   <label className="text-[9px] font-black uppercase tracking-widest text-fuchsia-500">{group.name}</label>
                                   {group.minSelect > 0 ? (
@@ -303,33 +319,8 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
                 <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-1 block">Order Total</span>
                 <span className="text-4xl sm:text-5xl md:text-6xl font-heading font-black italic tracking-tighter leading-none">${orderTotal.toFixed(2)}</span>
               </div>
-              <div className="text-[10px] font-black uppercase tracking-widest text-zinc-600 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span>Subtotal</span>
-                  <span>${calculatedSubtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Booking Fee</span>
-                  <span>${bookingFee.toFixed(2)}</span>
-                </div>
-                {taxAmount > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span>Tax</span>
-                    <span>${taxAmount.toFixed(2)}</span>
-                  </div>
-                )}
-                {stripeFeeAmount > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span>Stripe Fee</span>
-                    <span>${stripeFeeAmount.toFixed(2)}</span>
-                  </div>
-                )}
-                {deliveryFee > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span>Delivery Fee</span>
-                    <span>${deliveryFee.toFixed(2)}</span>
-                  </div>
-                )}
+              <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                Full breakdown shown below
               </div>
             </div>
 
@@ -389,16 +380,19 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
                         <label className="block text-[9px] font-black uppercase tracking-[0.3em] text-zinc-500 text-center">Fulfillment Method</label>
                         <div className="grid grid-cols-2 bg-zinc-900 border-2 border-zinc-800 p-1 font-black uppercase tracking-widest text-[9px]">
                           <button onClick={() => setDeliveryRequested(false)} className={`py-3 transition-colors ${!deliveryRequested ? 'bg-green-500 text-black shadow-[0_0_15px_rgba(34,197,94,0.4)]' : 'text-zinc-500 hover:text-white'}`}>Pickup</button>
-                          <button 
-                            disabled
-                            onClick={() => distanceEligibility !== 'ELIGIBLE' ? checkDeliveryEligibility() : setDeliveryRequested(true)}
-                            className="py-3 transition-colors text-zinc-500 opacity-40 cursor-not-allowed"
-                          >
-                            Delivery
-                          </button>
-                        </div>
-                        <div className="text-[9px] font-black uppercase tracking-widest text-zinc-600 text-center">
-                          Delivery disabled
+                          <div className="relative group">
+                            <button 
+                              disabled
+                              onClick={() => distanceEligibility !== 'ELIGIBLE' ? checkDeliveryEligibility() : setDeliveryRequested(true)}
+                              className="w-full py-3 transition-colors text-zinc-500 opacity-40 cursor-not-allowed"
+                              aria-label="Delivery unavailable"
+                            >
+                              Delivery
+                            </button>
+                            <div className="pointer-events-none absolute left-1/2 top-[-2.5rem] -translate-x-1/2 whitespace-nowrap rounded border border-zinc-700 bg-black px-2 py-1 text-[8px] font-black uppercase tracking-widest text-zinc-300 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                              Delivery currently unavailable
+                            </div>
+                          </div>
                         </div>
                       </div>
 
@@ -472,21 +466,12 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
                       </div>
 
                       <div className="bg-zinc-900 border-2 border-zinc-800 p-4 text-[10px] font-black uppercase tracking-widest text-zinc-500 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span>Subtotal</span>
-                          <span className="text-white">${calculatedSubtotal.toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span>Booking Fee</span>
-                          <span className="text-white">${bookingFee.toFixed(2)}</span>
-                        </div>
-                        {taxAmount > 0 && (
-                          <div className="flex items-center justify-between">
-                            <span>Tax</span>
-                            <span className="text-white">${taxAmount.toFixed(2)}</span>
+                        {orderSummaryItems.map((item) => (
+                          <div key={item.label} className="flex items-center justify-between">
+                            <span>{item.label}</span>
+                            <span className="text-white">${item.amount.toFixed(2)}</span>
                           </div>
-                        )}
-                        
+                        ))}
                         <div className="flex items-center justify-between text-white border-t border-zinc-800 pt-2">
                           <span>Total</span>
                           <span>${orderTotal.toFixed(2)}</span>

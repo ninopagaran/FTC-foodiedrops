@@ -123,14 +123,10 @@ export const loginUser = async (email: string, pass: string): Promise<User> => {
 };
 
 export const signUpUser = async (email: string, pass: string, role: 'customer' | 'vendor' = 'customer') => {
-  const { data: roleData, error: roleError } = await supabase
-    .rpc('check_email_role', { p_email: email });
-  if (!roleError && roleData?.exists) {
-    throw new Error('This email is already registered. Please create another account.');
-  }
+  const normalizedEmail = email.trim().toLowerCase();
 
   const { data, error } = await supabase.auth.signUp({
-    email,
+    email: normalizedEmail,
     password: pass,
     options: {
       data: {
@@ -139,15 +135,26 @@ export const signUpUser = async (email: string, pass: string, role: 'customer' |
     }
   });
   
-  if (error) throw error;
+  if (error) {
+    const msg = String(error.message || '').toLowerCase();
+    if (msg.includes('already') && msg.includes('registered')) {
+      throw new Error('This email is already registered. Please create another account.');
+    }
+    throw error;
+  }
+
+  // Supabase may return a user object without a created identity when the email already exists.
+  if (data.user && (!data.user.identities || data.user.identities.length === 0)) {
+    throw new Error('This email is already registered. Please create another account.');
+  }
   
   // Create profile entry only if session is active (RLS allows insert for auth.uid()).
   if (data.session?.user) {
     const { error: profileError } = await supabase.from('profiles').upsert({
       id: data.session.user.id,
-      email: email,
-      username: email.split('@')[0],
-      name: email.split('@')[0],
+      email: normalizedEmail,
+      username: normalizedEmail.split('@')[0],
+      name: normalizedEmail.split('@')[0],
       is_vendor: role === 'vendor',
       is_admin: false
     }, { onConflict: 'id' });
@@ -224,6 +231,11 @@ export const softDeleteProfile = async (userId: string): Promise<void> => {
         .from('profiles')
         .update({ is_deleted: true, status: 'suspended' })
         .eq('id', userId);
+    if (error) throw error;
+};
+
+export const adminDeleteUserReleaseEmail = async (userId: string): Promise<void> => {
+    const { error } = await supabase.rpc('admin_delete_user_release_email', { p_user_id: userId });
     if (error) throw error;
 };
 
