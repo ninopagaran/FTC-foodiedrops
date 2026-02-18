@@ -129,7 +129,8 @@ const App: React.FC = () => {
 
     // Auth listener
     const unsubscribe = api.onAuthChange(async (authUser) => {
-      setIsLoading(true);
+      const shouldBlockUI = !isAuthReady;
+      if (shouldBlockUI) setIsLoading(true);
       try {
         if (authUser) {
           setUser(authUser);
@@ -161,7 +162,7 @@ const App: React.FC = () => {
         }
       } finally {
         if (isMounted) {
-          setIsLoading(false);
+          if (shouldBlockUI) setIsLoading(false);
           setIsAuthReady(true);
         }
       }
@@ -299,7 +300,7 @@ const App: React.FC = () => {
   };
 
   const renderView = () => {
-    if (isLoading && route.view !== 'STUDIO') {
+    if (!isAuthReady && isLoading && route.view !== 'STUDIO') {
       return <div className="min-h-screen flex items-center justify-center bg-[#050505] text-white"><p className="text-2xl font-black italic uppercase tracking-widest animate-pulse">Loading Drops...</p></div>;
     }
 
@@ -326,7 +327,7 @@ const App: React.FC = () => {
       case 'INFLUENCE':
         return <InfluenceLab user={user} drops={drops} onBack={() => navigate('/')} onLogin={handleLogin} />;
       case 'ADMIN':
-        if (!isAuthReady || isLoading) {
+        if (!isAuthReady) {
           return <div className="min-h-screen flex items-center justify-center bg-[#050505] text-white"><p className="text-2xl font-black italic uppercase tracking-widest animate-pulse">Loading Admin...</p></div>;
         }
         return user?.isAdmin ? <AdminDashboard allDrops={adminDrops} onApproveDrop={handleApproveDrop} onRejectDrop={handleRejectDrop} onRefreshDrops={() => fetchDrops(user, false)} onBack={() => navigate('/')} /> : <Home user={user} drops={drops} onSelectDrop={(id) => navigate(`/drop/${id}`)} onPartnerClick={() => navigate('/studio')} />;
