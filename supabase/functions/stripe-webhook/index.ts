@@ -70,14 +70,23 @@ Deno.serve(async (req: Request) => {
       const purchaseId = session.metadata?.purchase_id;
 
       if (purchaseId) {
-        await supabase
+        const { data: updatedRows } = await supabase
           .from('purchases')
           .update({
             payment_status: 'failed',
             stripe_checkout_session_id: session.id,
           })
           .eq('id', purchaseId)
-          .neq('payment_status', 'paid');
+          .eq('payment_status', 'pending')
+          .select('drop_id, quantity');
+
+        const failedPurchase = updatedRows?.[0] as { drop_id: string; quantity: number } | undefined;
+        if (failedPurchase) {
+          await supabase.rpc('restore_drop_inventory', {
+            p_drop_id: failedPurchase.drop_id,
+            p_quantity: failedPurchase.quantity,
+          });
+        }
       }
     }
 

@@ -12,6 +12,8 @@ type PurchaseRow = {
   total_paid: number;
   payment_status: 'pending' | 'paid' | 'failed' | 'refunded';
   stripe_checkout_session_id: string | null;
+  checkout_token: string | null;
+  is_deleted: boolean;
 };
 
 Deno.serve(async (req: Request) => {
@@ -33,10 +35,12 @@ Deno.serve(async (req: Request) => {
 
   let purchaseId: string | undefined;
   let returnUrl: string | undefined;
+  let checkoutToken: string | undefined;
   try {
     const body = await req.json();
     purchaseId = body?.purchaseId;
     returnUrl = body?.returnUrl;
+    checkoutToken = body?.checkoutToken;
   } catch {
     return jsonResponse(400, { error: 'Invalid JSON body.' });
   }
@@ -51,14 +55,39 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false },
   });
 
+  const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
+  const bearer = authHeader?.match(/^Bearer\s+(.+)$/i)?.[1];
+  let requesterUserId: string | null = null;
+  if (bearer) {
+    const { data: userData, error: userError } = await supabase.auth.getUser(bearer);
+    if (!userError && userData.user?.id) {
+      requesterUserId = userData.user.id;
+    }
+  }
+
   const { data: purchase, error: purchaseError } = await supabase
     .from('purchases')
-    .select('id,user_id,customer_email,drop_id,drop_name,quantity,total_paid,payment_status,stripe_checkout_session_id')
+    .select('id,user_id,customer_email,drop_id,drop_name,quantity,total_paid,payment_status,stripe_checkout_session_id,checkout_token,is_deleted')
     .eq('id', purchaseId)
     .single<PurchaseRow>();
 
   if (purchaseError || !purchase) {
     return jsonResponse(404, { error: 'Purchase not found.' });
+  }
+
+  if (purchase.is_deleted) {
+    return jsonResponse(400, { error: 'Purchase is deleted.' });
+  }
+
+  const isOwner = !!requesterUserId && purchase.user_id === requesterUserId;
+  const hasGuestToken =
+    purchase.user_id === null &&
+    !!checkoutToken &&
+    !!purchase.checkout_token &&
+    checkoutToken === purchase.checkout_token;
+
+  if (!isOwner && !hasGuestToken) {
+    return jsonResponse(403, { error: 'Unauthorized checkout attempt.' });
   }
 
   if (purchase.payment_status === 'paid') {
@@ -67,6 +96,10 @@ Deno.serve(async (req: Request) => {
 
   if (purchase.payment_status === 'refunded') {
     return jsonResponse(400, { error: 'Purchase has been refunded and cannot be repaid.' });
+  }
+
+  if (purchase.payment_status === 'failed') {
+    return jsonResponse(400, { error: 'This checkout session has expired. Please place a new order.' });
   }
 
   const stripe = new Stripe(stripeSecretKey, {

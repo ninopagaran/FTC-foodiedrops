@@ -243,6 +243,9 @@ const App: React.FC = () => {
   };
 
   const handlePurchaseConfirm = async (id: string, qty: number, name: string, email: string, deliveryRequested: boolean, selections: SelectedItem[], deliveryAddress?: string, orderNotes?: string, isBulk?: boolean): Promise<string> => {
+    if (!user) {
+      throw new Error('Please log in to place an order.');
+    }
     const drop = drops.find(d => d.id === id);
     if (!drop) throw new Error('Package not found.');
     setIsLoading(true);
@@ -264,7 +267,7 @@ const App: React.FC = () => {
         setUserPurchases(prev => [purchase, ...prev]);
       }
 
-      const checkoutUrl = await api.createCheckoutSession(purchase.id, window.location.origin);
+      const checkoutUrl = await api.createCheckoutSession(purchase.id, window.location.origin, purchase.checkout_token);
       
       await fetchDrops(user, false);
       // Navigation removed to allow CheckoutModal to show success/payment state

@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "e2e": "playwright test",
+    "e2e:seed-users": "node e2e/seed-users.mjs",
     "e2e:ui": "playwright test --ui",
     "e2e:headed": "playwright test --headed"
   },

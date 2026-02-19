@@ -112,6 +112,7 @@ export interface Purchase {
   payment_status: 'pending' | 'paid' | 'failed' | 'refunded';
   stripe_checkout_session_id?: string;
   stripe_payment_intent_id?: string;
+  checkout_token?: string;
   paid_at?: string;
   unlocked_reward?: string;
   delivery_requested: boolean;

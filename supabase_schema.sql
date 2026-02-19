@@ -125,6 +125,18 @@ BEGIN
       'deleted_at', now()::text
     )
   WHERE id = p_user_id;
+
+  -- Also tombstone identity records so Supabase auth uniqueness checks
+  -- no longer hold the original email for sign-up.
+  UPDATE auth.identities
+  SET
+    provider_id = v_tombstone_email,
+    identity_data = CASE
+      WHEN identity_data ? 'email'
+        THEN jsonb_set(identity_data, '{email}', to_jsonb(v_tombstone_email), true)
+      ELSE identity_data
+    END
+  WHERE user_id = p_user_id;
 END;
 $$;
 
@@ -207,6 +219,7 @@ CREATE TABLE IF NOT EXISTS public.purchases (
   payment_status TEXT NOT NULL DEFAULT 'pending' CHECK (payment_status IN ('pending', 'paid', 'failed', 'refunded')),
   stripe_checkout_session_id TEXT,
   stripe_payment_intent_id TEXT,
+  checkout_token TEXT,
   paid_at TIMESTAMPTZ,
   drop_name TEXT,
   drop_image TEXT,
@@ -228,6 +241,9 @@ ALTER TABLE public.purchases
 
 ALTER TABLE public.purchases
   ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT;
+
+ALTER TABLE public.purchases
+  ADD COLUMN IF NOT EXISTS checkout_token TEXT;
 
 ALTER TABLE public.purchases
   ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
@@ -306,6 +322,10 @@ ON CONFLICT (id) DO NOTHING;
 CREATE UNIQUE INDEX IF NOT EXISTS purchases_stripe_checkout_session_id_idx
   ON public.purchases (stripe_checkout_session_id)
   WHERE stripe_checkout_session_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS purchases_checkout_token_idx
+  ON public.purchases (checkout_token)
+  WHERE checkout_token IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS public.waitlist (
   id uuid NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -688,6 +708,9 @@ DECLARE
   v_quantity_remaining INT;
   v_base_price NUMERIC;
   v_delivery_fee NUMERIC;
+  v_drop_is_deleted BOOLEAN;
+  v_drop_start TIMESTAMPTZ;
+  v_drop_end TIMESTAMPTZ;
   v_tax_rate NUMERIC;
   v_pass_stripe_fee BOOLEAN;
   v_booking_fee_per_package NUMERIC;
@@ -699,18 +722,22 @@ DECLARE
   v_expected_total_base NUMERIC;
   v_expected_total NUMERIC;
   v_new_purchase_id UUID;
+  v_checkout_token TEXT;
   v_verified_user_id UUID;
 BEGIN
   -- 1. SECURITY: Enforce Identity
-  IF auth.role() = 'authenticated' THEN
-     v_verified_user_id := auth.uid();
-  ELSE
-     v_verified_user_id := NULL;
+  IF auth.uid() IS NULL THEN
+     RAISE EXCEPTION 'Authentication required.';
+  END IF;
+  v_verified_user_id := auth.uid();
+
+  IF p_quantity IS NULL OR p_quantity <= 0 THEN
+    RAISE EXCEPTION 'Quantity must be at least 1.';
   END IF;
 
   -- 2. Lock the drop row specifically for update. 
-  SELECT quantity_remaining, price, delivery_fee, approval_status, COALESCE(tax_rate, 0), COALESCE(pass_stripe_fee, false)
-  INTO v_quantity_remaining, v_base_price, v_delivery_fee, v_approval_status, v_tax_rate, v_pass_stripe_fee
+  SELECT quantity_remaining, price, delivery_fee, approval_status, COALESCE(tax_rate, 0), COALESCE(pass_stripe_fee, false), COALESCE(is_deleted, false), start_date, end_date
+  INTO v_quantity_remaining, v_base_price, v_delivery_fee, v_approval_status, v_tax_rate, v_pass_stripe_fee, v_drop_is_deleted, v_drop_start, v_drop_end
   FROM public.drops
   WHERE id = p_drop_id
   FOR UPDATE;
@@ -722,6 +749,14 @@ BEGIN
 
   IF v_approval_status <> 'approved' THEN
     RAISE EXCEPTION 'This drop is not approved for booking.';
+  END IF;
+
+  IF v_drop_is_deleted THEN
+    RAISE EXCEPTION 'This drop is no longer available.';
+  END IF;
+
+  IF now() < v_drop_start OR now() > v_drop_end THEN
+    RAISE EXCEPTION 'This drop is not currently available.';
   END IF;
 
   -- 4. Check inventory
@@ -774,14 +809,16 @@ BEGIN
   END IF;
 
   -- 6. Create Purchase Record using VERIFIED User ID
+  v_checkout_token := gen_random_uuid()::text;
+
   INSERT INTO public.purchases (
     user_id, drop_id, customer_name, customer_email, quantity, subtotal, tax_rate, tax_amount, booking_fee, stripe_fee_amount, pass_stripe_fee, total_paid,
     delivery_requested, delivery_address, selected_items, drop_name, drop_image,
-    order_notes, is_bulk
+    order_notes, is_bulk, checkout_token
   ) VALUES (
     v_verified_user_id, p_drop_id, p_customer_name, p_customer_email, p_quantity, p_subtotal, v_tax_rate, v_tax_amount, v_booking_fee, v_stripe_fee_amount, v_pass_stripe_fee, p_total_paid,
     p_delivery_requested, p_delivery_address, p_selected_items, p_drop_name, p_drop_image,
-    p_order_notes, COALESCE(p_is_bulk, false)
+    p_order_notes, COALESCE(p_is_bulk, false), v_checkout_token
   ) RETURNING id INTO v_new_purchase_id;
 
   -- 7. Decrement Inventory
@@ -791,7 +828,39 @@ BEGIN
   WHERE id = p_drop_id;
 
   -- 8. Return success object
-  RETURN json_build_object('success', true, 'purchase_id', v_new_purchase_id);
+  RETURN json_build_object('success', true, 'purchase_id', v_new_purchase_id, 'checkout_token', v_checkout_token);
 
+END;
+$$;
+
+-- Restore reserved inventory when a pending checkout fails/expires.
+CREATE OR REPLACE FUNCTION public.restore_drop_inventory(
+  p_drop_id UUID,
+  p_quantity INT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+BEGIN
+  IF p_quantity IS NULL OR p_quantity <= 0 THEN
+    RETURN;
+  END IF;
+
+  IF auth.role() <> 'service_role' AND public.is_admin() IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'Unauthorized: service role or admin required.';
+  END IF;
+
+  UPDATE public.drops
+  SET
+    quantity_remaining = COALESCE(quantity_remaining, 0) + p_quantity,
+    status = CASE
+      WHEN status = 'SOLD_OUT' AND (COALESCE(quantity_remaining, 0) + p_quantity) > 0 THEN 'LIVE'
+      ELSE status
+    END
+  WHERE id = p_drop_id
+    AND COALESCE(is_deleted, false) = false;
 END;
 $$;

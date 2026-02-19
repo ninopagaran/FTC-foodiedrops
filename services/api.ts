@@ -640,9 +640,9 @@ export const savePurchase = async (drop: Drop, payload: any, bookingFeePerPackag
     return purchaseData as Purchase;
 };
 
-export const createCheckoutSession = async (purchaseId: string, returnUrl?: string): Promise<string> => {
+export const createCheckoutSession = async (purchaseId: string, returnUrl?: string, checkoutToken?: string): Promise<string> => {
     const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-        body: { purchaseId, returnUrl }
+        body: { purchaseId, returnUrl, checkoutToken: checkoutToken || null }
     });
 
     if (error) {
