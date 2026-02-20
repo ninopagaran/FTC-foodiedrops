@@ -49,7 +49,36 @@ Deno.serve(async (req: Request) => {
     return jsonResponse(400, { error: 'purchaseId is required.' });
   }
 
-  const siteUrl = returnUrl || req.headers.get('origin') || Deno.env.get('SITE_URL') || 'http://localhost:5173';
+  const configuredSiteUrl = Deno.env.get('SITE_URL') || 'http://localhost:5173';
+  const allowedOrigins = new Set<string>();
+  const configuredAllowlist = Deno.env.get('ALLOWED_RETURN_ORIGINS');
+  const candidates = [
+    configuredSiteUrl,
+    ...(configuredAllowlist ? configuredAllowlist.split(',') : []),
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+  ];
+
+  for (const value of candidates) {
+    const trimmed = value?.trim();
+    if (!trimmed) continue;
+    try {
+      allowedOrigins.add(new URL(trimmed).origin);
+    } catch {
+      // Ignore invalid URL values.
+    }
+  }
+
+  let siteUrl = configuredSiteUrl;
+  const requestedReturnUrl = returnUrl || req.headers.get('origin') || configuredSiteUrl;
+  try {
+    const requestedOrigin = new URL(requestedReturnUrl).origin;
+    if (allowedOrigins.has(requestedOrigin)) {
+      siteUrl = requestedOrigin;
+    }
+  } catch {
+    // Keep configured fallback URL.
+  }
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false },

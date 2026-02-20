@@ -1,6 +1,7 @@
 
 import { supabase } from './supabase';
-import { Drop, Purchase, User, UserTier, Profile, DropApprovalStatus, WaitlistEntry } from '../types';
+import { Drop, Purchase, User, UserTier, Profile, DropApprovalStatus, WaitlistEntry, DropCategory } from '../types';
+import { DEFAULT_DROP_CATEGORIES } from '../constants/dropCategories';
 
 // --- SUPABASE API IMPLEMENTATION ---
 
@@ -213,6 +214,81 @@ export const getProfilesPaged = async (params: {
     const { data, error, count } = await query.order('name', { ascending: true }).range(from, to);
     if (error) throw error;
     return { data: (data as Profile[]) || [], total: count || 0 };
+};
+
+// --- DROP CATEGORIES ---
+
+export const getApprovedDropCategories = async (): Promise<string[]> => {
+    const { data, error } = await supabase
+        .from('drop_categories')
+        .select('name')
+        .eq('status', 'approved')
+        .order('name', { ascending: true });
+    if (error) {
+        console.error('Failed to load approved categories:', error);
+        return DEFAULT_DROP_CATEGORIES;
+    }
+    const fromDb = (data || []).map((row: { name: string }) => row.name).filter(Boolean);
+    const merged = Array.from(new Set([...DEFAULT_DROP_CATEGORIES, ...fromDb]));
+    return merged;
+};
+
+export const requestDropCategory = async (name: string): Promise<DropCategory> => {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('Category name is required.');
+    const normalized = trimmed.toLowerCase();
+
+    // If already exists (approved or pending), return it as-is.
+    const { data: existing } = await supabase
+        .from('drop_categories')
+        .select('*')
+        .eq('normalized_name', normalized)
+        .maybeSingle();
+    if (existing) return existing as DropCategory;
+
+    const { data: userData, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !userData.user?.id) throw new Error('Authentication required.');
+
+    const { data, error } = await supabase
+        .from('drop_categories')
+        .insert({
+            name: trimmed,
+            normalized_name: normalized,
+            status: 'pending',
+            requested_by: userData.user.id
+        })
+        .select()
+        .single();
+    if (error) throw error;
+    return data as DropCategory;
+};
+
+export const getPendingDropCategories = async (): Promise<DropCategory[]> => {
+    const { data, error } = await supabase
+        .from('drop_categories')
+        .select('*')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data || []) as DropCategory[];
+};
+
+export const reviewDropCategory = async (id: string, approve: boolean): Promise<DropCategory> => {
+    const { data: userData, error: userErr } = await supabase.auth.getUser();
+    if (userErr || !userData.user?.id) throw new Error('Authentication required.');
+
+    const { data, error } = await supabase
+        .from('drop_categories')
+        .update({
+            status: approve ? 'approved' : 'rejected',
+            reviewed_by: userData.user.id,
+            reviewed_at: new Date().toISOString()
+        })
+        .eq('id', id)
+        .select()
+        .single();
+    if (error) throw error;
+    return data as DropCategory;
 };
 
 export const updateProfileAdmin = async (userId: string, updates: Partial<Profile>): Promise<Profile> => {

@@ -132,6 +132,17 @@ export interface WaitlistEntry {
   timestamp: string;
 }
 
+export interface DropCategory {
+  id: string;
+  name: string;
+  normalized_name: string;
+  status: 'pending' | 'approved' | 'rejected';
+  requested_by?: string | null;
+  reviewed_by?: string | null;
+  created_at?: string;
+  reviewed_at?: string | null;
+}
+
 export interface Drop {
   id: string;
   creator_id: string;

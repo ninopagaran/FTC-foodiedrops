@@ -4,6 +4,7 @@ import { Button } from './Button';
 import { Drop, DropStatus, DropType } from '../types';
 import { toDateTimeLocal } from '../utils';
 import * as api from '../services/api';
+import { DEFAULT_DROP_CATEGORIES } from '../constants/dropCategories';
 
 interface AdminDropFormProps {
   isOpen: boolean;
@@ -22,7 +23,7 @@ const getInitialState = (initialData?: Drop | null): Partial<Drop> => {
   return {
     name: '',
     chef: '',
-    category: 'BBQ',
+    category: 'BBQ / Smokehouse',
     price: 0,
     total_quantity: 100,
     status: DropStatus.UPCOMING,
@@ -42,11 +43,17 @@ export const AdminDropForm: React.FC<AdminDropFormProps> = ({ isOpen, onClose, o
   const [formData, setFormData] = useState<Partial<Drop>>(getInitialState(initialData));
   const [priceInput, setPriceInput] = useState('1');
   const [quantityInput, setQuantityInput] = useState('1');
+  const [categoryQuery, setCategoryQuery] = useState('');
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [categoryHighlightIndex, setCategoryHighlightIndex] = useState(0);
 
   useEffect(() => {
     setFormData(getInitialState(initialData));
     setPriceInput(String(initialData?.price ?? 1));
     setQuantityInput(String(initialData?.total_quantity ?? 1));
+    setCategoryQuery('');
+    setCategoryOpen(false);
+    setCategoryHighlightIndex(0);
   }, [initialData, isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -90,10 +97,23 @@ export const AdminDropForm: React.FC<AdminDropFormProps> = ({ isOpen, onClose, o
 
   if (!isOpen) return null;
 
+  const filteredCategories = DEFAULT_DROP_CATEGORIES.filter((c) =>
+    c.toLowerCase().includes(categoryQuery.trim().toLowerCase())
+  );
+
+  const commitCategory = (value: string) => {
+    const next = value.trim();
+    if (!next) return;
+    setFormData((prev) => ({ ...prev, category: next }));
+    setCategoryQuery('');
+    setCategoryOpen(false);
+    setCategoryHighlightIndex(0);
+  };
+
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm overflow-y-auto" role="dialog">
-      <div className="w-full max-w-4xl bg-zinc-950 border border-zinc-800 p-8 my-8 relative">
-        <h2 className="font-heading text-3xl font-black italic tracking-tight uppercase mb-8">
+    <div className="fixed inset-0 z-[100] flex items-start justify-center bg-black/90 px-4 py-6 backdrop-blur-sm overflow-y-auto" role="dialog">
+      <div className="w-full max-w-4xl bg-zinc-950 border border-zinc-800 p-8 my-auto relative max-h-[calc(100vh-3rem)] overflow-y-auto">
+        <h2 className="font-heading text-3xl font-black italic tracking-tight uppercase mb-8 pr-14">
           {initialData ? 'Edit Drop' : 'Create New Drop'}
         </h2>
         <button onClick={onClose} className="absolute top-8 right-8 text-zinc-500 hover:text-white transition-colors">
@@ -104,11 +124,11 @@ export const AdminDropForm: React.FC<AdminDropFormProps> = ({ isOpen, onClose, o
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-400">Drop Name <span className="text-fuchsia-500">*</span></label>
-              <input name="name" value={formData.name} onChange={handleChange} className="w-full bg-zinc-900 border border-zinc-800 p-3" required />
+              <input name="name" value={formData.name} onChange={handleChange} className="w-full bg-zinc-900 border border-zinc-800 p-3" autoComplete="off" required />
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-400">Chef/Brand <span className="text-fuchsia-500">*</span></label>
-              <input name="chef" value={formData.chef} onChange={handleChange} className="w-full bg-zinc-900 border border-zinc-800 p-3" required />
+              <input name="chef" value={formData.chef} onChange={handleChange} className="w-full bg-zinc-900 border border-zinc-800 p-3" autoComplete="off" required />
             </div>
           </div>
 
@@ -124,7 +144,7 @@ export const AdminDropForm: React.FC<AdminDropFormProps> = ({ isOpen, onClose, o
                    />
                    <div className="flex items-center gap-2">
                       <span className="text-[10px] text-zinc-500 uppercase font-bold">OR USE URL</span>
-                      <input name="image" value={formData.image || ''} onChange={handleChange} className="flex-1 bg-zinc-900 border border-zinc-800 p-2 font-mono text-xs" placeholder="https://..." />
+                      <input name="image" value={formData.image || ''} onChange={handleChange} className="flex-1 bg-zinc-900 border border-zinc-800 p-2 font-mono text-xs" autoComplete="off" placeholder="https://..." />
                    </div>
                </div>
                
@@ -141,7 +161,7 @@ export const AdminDropForm: React.FC<AdminDropFormProps> = ({ isOpen, onClose, o
           
           <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-400">Stripe Payment Link (Optional)</label>
-              <input name="stripe_payment_link" value={formData.stripe_payment_link || ''} onChange={handleChange} placeholder="https://buy.stripe.com/..." className="w-full bg-zinc-900 border border-zinc-800 p-3 font-mono" />
+              <input name="stripe_payment_link" value={formData.stripe_payment_link || ''} onChange={handleChange} placeholder="https://buy.stripe.com/..." className="w-full bg-zinc-900 border border-zinc-800 p-3 font-mono" autoComplete="off" />
           </div>
 
           <div className="flex items-center justify-between bg-zinc-900 border border-zinc-800 p-4">
@@ -238,8 +258,107 @@ export const AdminDropForm: React.FC<AdminDropFormProps> = ({ isOpen, onClose, o
               </select>
             </div>
              <div className="space-y-2">
-              <label className="text-xs font-bold text-zinc-400">Category</label>
-              <input name="category" value={formData.category} onChange={handleChange} className="w-full bg-zinc-900 border border-zinc-800 p-3" />
+              <label className="text-xs font-bold text-zinc-400">Category / Type</label>
+              <div className="relative">
+                <input
+                  name="category"
+                  value={categoryOpen ? categoryQuery : (formData.category || DEFAULT_DROP_CATEGORIES[0])}
+                  onFocus={() => {
+                    setCategoryQuery(formData.category || DEFAULT_DROP_CATEGORIES[0]);
+                    setCategoryOpen(true);
+                    setCategoryHighlightIndex(0);
+                  }}
+                  onChange={(e) => {
+                    setCategoryQuery(e.target.value);
+                    setCategoryOpen(true);
+                    setCategoryHighlightIndex(0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (!categoryOpen) return;
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      if (!filteredCategories.length) return;
+                      setCategoryHighlightIndex((idx) => (idx + 1) % filteredCategories.length);
+                      return;
+                    }
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      if (!filteredCategories.length) return;
+                      setCategoryHighlightIndex((idx) => (idx - 1 + filteredCategories.length) % filteredCategories.length);
+                      return;
+                    }
+                    if (e.key === 'Enter' || e.key === 'Tab') {
+                      if (e.key === 'Tab' && !filteredCategories.length && categoryQuery.trim().length < 2) {
+                        return;
+                      }
+                      e.preventDefault();
+                      if (filteredCategories.length > 0) {
+                        commitCategory(filteredCategories[Math.max(0, Math.min(categoryHighlightIndex, filteredCategories.length - 1))]);
+                        return;
+                      }
+                      if (categoryQuery.trim().length >= 2) {
+                        commitCategory(categoryQuery);
+                      }
+                      return;
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setCategoryOpen(false);
+                    }
+                  }}
+                  onBlur={() => {
+                    window.setTimeout(() => {
+                      const next = categoryQuery.trim();
+                      if (next.length >= 2) {
+                        const exact = DEFAULT_DROP_CATEGORIES.find((c) => c.toLowerCase() === next.toLowerCase());
+                        setFormData((prev) => ({ ...prev, category: exact || next }));
+                      }
+                      setCategoryOpen(false);
+                      setCategoryQuery('');
+                      setCategoryHighlightIndex(0);
+                    }, 120);
+                  }}
+                  className="w-full bg-zinc-900 border border-zinc-800 p-3"
+                  placeholder="Type to search or set custom"
+                  autoComplete="off"
+                />
+                {categoryOpen && (
+                  <div className="absolute z-50 mt-2 w-full max-h-56 overflow-y-auto bg-black border border-zinc-800 shadow-2xl">
+                    {filteredCategories.map((c, idx) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => commitCategory(c)}
+                        className={`w-full text-left px-3 py-2 text-[11px] font-black uppercase tracking-widest ${
+                          idx === categoryHighlightIndex
+                            ? 'bg-zinc-800 text-white'
+                            : (formData.category || DEFAULT_DROP_CATEGORIES[0]) === c
+                              ? 'bg-fuchsia-500 text-black'
+                              : 'text-zinc-300 hover:bg-zinc-900'
+                        }`}
+                      >
+                        {c}
+                      </button>
+                    ))}
+                    {filteredCategories.length === 0 && (
+                      <div className="px-3 py-2 space-y-2">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500">No matches</div>
+                        {categoryQuery.trim().length >= 2 && (
+                          <button
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => commitCategory(categoryQuery)}
+                            className="w-full text-left px-3 py-2 text-[10px] font-black uppercase tracking-widest bg-fuchsia-500 text-black hover:bg-white transition-colors"
+                          >
+                            Use Custom "{categoryQuery.trim()}"
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           

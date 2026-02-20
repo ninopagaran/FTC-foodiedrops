@@ -89,13 +89,13 @@ export const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
         </div>
 
         {mobileOpen && (
-          <div className="md:hidden fixed inset-0 z-[200]">
+          <div className="md:hidden fixed inset-0 z-[200] overflow-y-auto">
             <button
               className="absolute inset-0 bg-black/70"
               aria-label="Close navigation"
               onClick={() => setMobileOpen(false)}
             />
-            <div className="absolute inset-x-0 top-0 bg-black/95 border-b border-zinc-900 pt-16 pb-6 px-6 shadow-2xl">
+            <div className="absolute inset-x-0 top-0 bg-black/95 border-b border-zinc-900 pt-16 pb-6 px-6 shadow-2xl max-h-screen overflow-y-auto">
               <button
                 onClick={() => setMobileOpen(false)}
                 aria-label="Close navigation"

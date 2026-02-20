@@ -5,6 +5,7 @@ import { Drop, DropStatus, DropType, DropApprovalStatus, QuantityTier, MenuItem,
 import { DropCard } from '../components/DropCard';
 import { toDateTimeLocal, generateUUID } from '../utils';
 import * as api from '../services/api';
+import { DEFAULT_DROP_CATEGORIES } from '../constants/dropCategories';
 
 interface SellerStudioProps {
   user: User;
@@ -24,39 +25,6 @@ const BRAND_COLORS = [
   { name: 'Cyber Mint', value: '#6ee7b7' },
   { name: 'Gold Leaf', value: '#eab308' },
 ];
-const CUISINES = [
-  'American',
-  'Pizza',
-  'Italian',
-  'Mexican',
-  'Tex-Mex',
-  'Asian Fast Casual',
-  'Chinese',
-  'Japanese',
-  'Thai',
-  'Indian',
-  'Mediterranean',
-  'Burgers',
-  'Sandwiches',
-  'BBQ',
-  'Vietnamese',
-  'Korean',
-  'Healthy',
-  'Salads',
-  'Bowls',
-  'Middle Eastern',
-  'Breakfast',
-  'Brunch',
-  'Spanish',
-  'Tapas',
-  'Caribbean',
-  'Jamaican',
-  'Latin American',
-  'Peruvian',
-  'Vegan / Plant-Based',
-  'Other'
-];
-
 export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdate, onBack, onSave, existingDrops }) => {
   if (!user.isVendor) {
     return (
@@ -82,6 +50,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
   const [optionPriceVisibility, setOptionPriceVisibility] = useState<Record<string, boolean>>({});
   const [cuisineOpen, setCuisineOpen] = useState(false);
   const [cuisineQuery, setCuisineQuery] = useState('');
+  const [categoryHighlightIndex, setCategoryHighlightIndex] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
 
   const navigateToDrops = () => {
@@ -117,7 +86,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
     return {
       name: '',
       chef: user.name || '', // Default to the user's name/brand
-      category: 'American',
+      category: DEFAULT_DROP_CATEGORIES[0],
       price: 0, 
       tax_rate: 0,
       total_quantity: 50,
@@ -636,39 +605,110 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                       </div>
                     </div>
                     <div className="space-y-3">
-                      <label className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-500">Cuisine <span className="text-fuchsia-500">*</span></label>
+                      <label className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-500">Drop Category / Type <span className="text-fuchsia-500">*</span></label>
                       <div className="relative">
+                        {(() => {
+                          const query = cuisineQuery.trim().toLowerCase();
+                          const filteredCategories = DEFAULT_DROP_CATEGORIES.filter(c => c.toLowerCase().includes(query));
+                          const commitCategory = (value: string) => {
+                            const next = value.trim();
+                            if (!next) return;
+                            setFormData({ ...formData, category: next });
+                            setCuisineQuery('');
+                            setCuisineOpen(false);
+                            setCategoryHighlightIndex(0);
+                          };
+                          return (
+                            <>
                         <input
                           type="text"
-                          value={cuisineOpen ? cuisineQuery : (formData.category || 'American')}
+                          value={cuisineOpen ? cuisineQuery : (formData.category || DEFAULT_DROP_CATEGORIES[0])}
                           onFocus={() => {
-                            setCuisineQuery(formData.category || 'American');
+                            setCuisineQuery(formData.category || DEFAULT_DROP_CATEGORIES[0]);
                             setCuisineOpen(true);
+                            setCategoryHighlightIndex(0);
                           }}
                           onChange={(e) => {
                             setCuisineQuery(e.target.value);
                             setCuisineOpen(true);
+                            setCategoryHighlightIndex(0);
+                          }}
+                          onKeyDown={(e) => {
+                            if (!cuisineOpen) return;
+                            if (e.key === 'ArrowDown') {
+                              e.preventDefault();
+                              if (!filteredCategories.length) return;
+                              setCategoryHighlightIndex((idx) => (idx + 1) % filteredCategories.length);
+                              return;
+                            }
+                            if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              if (!filteredCategories.length) return;
+                              setCategoryHighlightIndex((idx) => (idx - 1 + filteredCategories.length) % filteredCategories.length);
+                              return;
+                            }
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (filteredCategories.length > 0) {
+                                commitCategory(filteredCategories[Math.max(0, Math.min(categoryHighlightIndex, filteredCategories.length - 1))]);
+                                return;
+                              }
+                              if (cuisineQuery.trim().length >= 2) {
+                                commitCategory(cuisineQuery);
+                              }
+                              return;
+                            }
+                            if (e.key === 'Tab') {
+                              if (filteredCategories.length > 0) {
+                                commitCategory(filteredCategories[Math.max(0, Math.min(categoryHighlightIndex, filteredCategories.length - 1))]);
+                                return;
+                              }
+                              if (cuisineQuery.trim().length >= 2) {
+                                commitCategory(cuisineQuery);
+                              }
+                              return;
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setCuisineOpen(false);
+                            }
                           }}
                           onBlur={() => {
-                            window.setTimeout(() => setCuisineOpen(false), 120);
+                            window.setTimeout(() => {
+                              const next = cuisineQuery.trim();
+                              if (next.length >= 2) {
+                                const exact = DEFAULT_DROP_CATEGORIES.find(
+                                  (c) => c.toLowerCase() === next.toLowerCase()
+                                );
+                                if (exact) {
+                                  setFormData({ ...formData, category: exact });
+                                } else {
+                                  setFormData({ ...formData, category: next });
+                                }
+                              }
+                              setCuisineOpen(false);
+                              setCuisineQuery('');
+                              setCategoryHighlightIndex(0);
+                            }, 120);
                           }}
-                          placeholder="Type to search cuisines"
+                          placeholder="Type to search categories/types"
                           className="w-full bg-zinc-950 border-4 border-zinc-900 px-5 py-4 font-black uppercase tracking-widest text-sm focus:border-fuchsia-500 outline-none"
+                          autoComplete="off"
                         />
                         {cuisineOpen && (
                           <div className="absolute z-50 mt-2 w-full max-h-56 overflow-y-auto bg-black border-2 border-zinc-800 shadow-2xl">
-                            {CUISINES.filter(c => c.toLowerCase().includes(cuisineQuery.toLowerCase())).map((c) => (
+                            {filteredCategories.map((c, idx) => (
                               <button
                                 key={c}
                                 type="button"
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={() => {
-                                  setFormData({ ...formData, category: c });
-                                  setCuisineQuery('');
-                                  setCuisineOpen(false);
+                                  commitCategory(c);
                                 }}
                                 className={`w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-widest ${
-                                  (formData.category || 'American') === c
+                                  idx === categoryHighlightIndex
+                                    ? 'bg-zinc-800 text-white'
+                                    : (formData.category || DEFAULT_DROP_CATEGORIES[0]) === c
                                     ? 'bg-fuchsia-500 text-black'
                                     : 'text-zinc-300 hover:bg-zinc-900'
                                 }`}
@@ -676,14 +716,34 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                                 {c}
                               </button>
                             ))}
-                            {CUISINES.filter(c => c.toLowerCase().includes(cuisineQuery.toLowerCase())).length === 0 && (
-                              <div className="px-4 py-3 text-[10px] font-black uppercase tracking-widest text-zinc-500">
-                                No matches
+                            {filteredCategories.length === 0 && (
+                              <div className="px-4 py-3 space-y-2">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500">
+                                  No matches
+                                </div>
+                                {cuisineQuery.trim().length >= 2 && (
+                                  <button
+                                    type="button"
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                      commitCategory(cuisineQuery);
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-[10px] font-black uppercase tracking-widest bg-fuchsia-500 text-black hover:bg-white transition-colors"
+                                  >
+                                    Use Custom "{cuisineQuery.trim()}"
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
                         )}
+                            </>
+                          );
+                        })()}
                       </div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">
+                        Pick a predefined type or enter your own custom type.
+                      </p>
                     </div>
                      <div className="space-y-4">
                         <label className="text-[11px] font-black uppercase tracking-[0.3em] text-zinc-500">Drop Image <span className="text-fuchsia-500">*</span></label>

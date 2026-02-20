@@ -4,6 +4,7 @@ import { Drop, DropStatus, SortOption, User } from '../types';
 import { DropCard } from '../components/DropCard';
 import { Button } from '../components/Button';
 import * as api from '../services/api';
+import { DEFAULT_DROP_CATEGORIES } from '../constants/dropCategories';
 
 interface HomeProps {
   user: User | null;
@@ -11,40 +12,6 @@ interface HomeProps {
   onSelectDrop: (id: string) => void;
   onPartnerClick: () => void;
 }
-
-const CATEGORIES = [
-  'ALL',
-  'American',
-  'Pizza',
-  'Italian',
-  'Mexican',
-  'Tex-Mex',
-  'Asian Fast Casual',
-  'Chinese',
-  'Japanese',
-  'Thai',
-  'Indian',
-  'Mediterranean',
-  'Burgers',
-  'Sandwiches',
-  'BBQ',
-  'Vietnamese',
-  'Korean',
-  'Healthy',
-  'Salads',
-  'Bowls',
-  'Middle Eastern',
-  'Breakfast',
-  'Brunch',
-  'Spanish',
-  'Tapas',
-  'Caribbean',
-  'Jamaican',
-  'Latin American',
-  'Peruvian',
-  'Vegan / Plant-Based',
-  'Other'
-];
 
 const Reveal: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isVisible, setVisible] = useState(false);
@@ -139,7 +106,7 @@ export const Home: React.FC<HomeProps> = ({ user, drops, onSelectDrop, onPartner
       return true;
     });
     const present = new Set(relevantDrops.map(d => d.category).filter(Boolean));
-    return CATEGORIES.filter(cat => cat === 'ALL' || present.has(cat));
+    return ['ALL', ...DEFAULT_DROP_CATEGORIES].filter(cat => cat === 'ALL' || present.has(cat));
   }, [drops]);
 
   useEffect(() => {

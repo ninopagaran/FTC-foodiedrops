@@ -114,9 +114,9 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 backdrop-blur-xl p-4" role="dialog" aria-modal="true">
-      <div className="w-full max-w-2xl max-h-[90vh] bg-zinc-950 border-8 border-black relative overflow-hidden shadow-2xl">
-        <div className="max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[110] flex items-start justify-center bg-black/90 backdrop-blur-xl p-4 overflow-y-auto" role="dialog" aria-modal="true">
+      <div className="w-full max-w-2xl max-h-[calc(100vh-2rem)] my-auto bg-zinc-950 border-8 border-black relative overflow-hidden shadow-2xl">
+        <div className="max-h-[calc(100vh-2rem)] overflow-y-auto">
         {!isProcessing && (
           <button onClick={onClose} className="absolute top-4 right-4 sm:top-8 sm:right-8 text-zinc-700 hover:text-white transition-colors z-10 p-2">
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -135,6 +135,7 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
               <input
                 required
                 className="w-full bg-zinc-900 border-4 border-black p-4 text-white font-black outline-none focus:border-fuchsia-500"
+                autoComplete="off"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
@@ -145,6 +146,7 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
                 required
                 type="email"
                 className="w-full bg-zinc-900 border-4 border-black p-4 text-white font-black outline-none focus:border-fuchsia-500"
+                autoComplete="off"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               />
@@ -189,6 +191,7 @@ export const BulkOrderModal: React.FC<BulkOrderModalProps> = ({
                 <input
                   required
                   className="w-full bg-zinc-900 border-4 border-black p-4 text-white font-black outline-none focus:border-fuchsia-500"
+                  autoComplete="off"
                   value={formData.deliveryAddress}
                   onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
                 />

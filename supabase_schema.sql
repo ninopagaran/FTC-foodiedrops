@@ -71,6 +71,10 @@ AS $$
 DECLARE
   v_profile RECORD;
 BEGIN
+  IF auth.role() <> 'service_role' THEN
+    RAISE EXCEPTION 'Unauthorized.';
+  END IF;
+
   SELECT id, is_vendor, is_admin
   INTO v_profile
   FROM public.profiles
@@ -343,6 +347,54 @@ CREATE TABLE IF NOT EXISTS public.analytics_events (
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS public.drop_categories (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL UNIQUE,
+  normalized_name TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'approved' CHECK (status IN ('pending', 'approved', 'rejected')),
+  requested_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  reviewed_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+  reviewed_at TIMESTAMPTZ
+);
+
+INSERT INTO public.drop_categories (name, normalized_name, status)
+VALUES
+  ('American (Classic / New American)', 'american (classic / new american)', 'approved'),
+  ('BBQ / Smokehouse', 'bbq / smokehouse', 'approved'),
+  ('Mexican', 'mexican', 'approved'),
+  ('Latin American', 'latin american', 'approved'),
+  ('Caribbean', 'caribbean', 'approved'),
+  ('Italian', 'italian', 'approved'),
+  ('Mediterranean', 'mediterranean', 'approved'),
+  ('Greek', 'greek', 'approved'),
+  ('Middle Eastern', 'middle eastern', 'approved'),
+  ('Indian', 'indian', 'approved'),
+  ('Chinese', 'chinese', 'approved'),
+  ('Japanese', 'japanese', 'approved'),
+  ('Sushi', 'sushi', 'approved'),
+  ('Korean', 'korean', 'approved'),
+  ('Thai', 'thai', 'approved'),
+  ('Vietnamese', 'vietnamese', 'approved'),
+  ('Filipino', 'filipino', 'approved'),
+  ('Hawaiian / Poke', 'hawaiian / poke', 'approved'),
+  ('African', 'african', 'approved'),
+  ('Cajun / Creole', 'cajun / creole', 'approved'),
+  ('Southern', 'southern', 'approved'),
+  ('German', 'german', 'approved'),
+  ('French', 'french', 'approved'),
+  ('Spanish (Tapas)', 'spanish (tapas)', 'approved'),
+  ('Pizza', 'pizza', 'approved'),
+  ('Vegan / Plant-Based', 'vegan / plant-based', 'approved'),
+  ('Fusion', 'fusion', 'approved'),
+  ('Desserts / Sweets', 'desserts / sweets', 'approved'),
+  ('Breakfast / Brunch', 'breakfast / brunch', 'approved'),
+  ('Beverages', 'beverages', 'approved'),
+  ('Merch', 'merch', 'approved'),
+  ('Tickets', 'tickets', 'approved'),
+  ('Events', 'events', 'approved')
+ON CONFLICT (normalized_name) DO NOTHING;
+
 ALTER TABLE public.analytics_events ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Authenticated can insert analytics" ON public.analytics_events;
@@ -350,9 +402,43 @@ CREATE POLICY "Authenticated can insert analytics" ON public.analytics_events FO
   auth.role() = 'authenticated'
 );
 
+ALTER TABLE public.drop_categories ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Drop categories public approved select" ON public.drop_categories;
+CREATE POLICY "Drop categories public approved select" ON public.drop_categories FOR SELECT USING (
+  status = 'approved' OR
+  requested_by = auth.uid() OR
+  EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid() AND COALESCE(p.is_admin, false) = true
+  )
+);
+
+DROP POLICY IF EXISTS "Vendor or admin can request category" ON public.drop_categories;
+CREATE POLICY "Vendor or admin can request category" ON public.drop_categories FOR INSERT WITH CHECK (
+  auth.uid() = requested_by AND
+  status = 'pending' AND
+  EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid()
+      AND (COALESCE(p.is_vendor, false) = true OR COALESCE(p.is_admin, false) = true)
+  )
+);
+
+DROP POLICY IF EXISTS "Admin can review categories" ON public.drop_categories;
+CREATE POLICY "Admin can review categories" ON public.drop_categories FOR UPDATE USING (
+  EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid() AND COALESCE(p.is_admin, false) = true
+  )
+);
+
 DROP POLICY IF EXISTS "Admin can read analytics" ON public.analytics_events;
 CREATE POLICY "Admin can read analytics" ON public.analytics_events FOR SELECT USING (
-  public.is_admin() = true
+  EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE p.id = auth.uid() AND COALESCE(p.is_admin, false) = true
+  )
 );
 
 -- Log signup events using auth flow (avoids client-side RLS issues)
@@ -703,6 +789,7 @@ CREATE OR REPLACE FUNCTION purchase_drop_item(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_quantity_remaining INT;
@@ -721,6 +808,15 @@ DECLARE
   v_calculated_total NUMERIC;
   v_expected_total_base NUMERIC;
   v_expected_total NUMERIC;
+  v_drop_menu_items JSONB;
+  v_server_subtotal NUMERIC;
+  v_server_unit_subtotal NUMERIC;
+  v_selected_item JSONB;
+  v_menu_item JSONB;
+  v_selected_mod_group JSONB;
+  v_mod_group JSONB;
+  v_selected_option JSONB;
+  v_mod_option JSONB;
   v_new_purchase_id UUID;
   v_checkout_token TEXT;
   v_verified_user_id UUID;
@@ -736,8 +832,8 @@ BEGIN
   END IF;
 
   -- 2. Lock the drop row specifically for update. 
-  SELECT quantity_remaining, price, delivery_fee, approval_status, COALESCE(tax_rate, 0), COALESCE(pass_stripe_fee, false), COALESCE(is_deleted, false), start_date, end_date
-  INTO v_quantity_remaining, v_base_price, v_delivery_fee, v_approval_status, v_tax_rate, v_pass_stripe_fee, v_drop_is_deleted, v_drop_start, v_drop_end
+  SELECT quantity_remaining, price, delivery_fee, approval_status, COALESCE(tax_rate, 0), COALESCE(pass_stripe_fee, false), COALESCE(is_deleted, false), start_date, end_date, COALESCE(menu_items, '[]'::jsonb)
+  INTO v_quantity_remaining, v_base_price, v_delivery_fee, v_approval_status, v_tax_rate, v_pass_stripe_fee, v_drop_is_deleted, v_drop_start, v_drop_end, v_drop_menu_items
   FROM public.drops
   WHERE id = p_drop_id
   FOR UPDATE;
@@ -764,13 +860,78 @@ BEGIN
     RAISE EXCEPTION 'Insufficient inventory. Only % items remaining.', v_quantity_remaining;
   END IF;
 
-  -- 5. SECURITY: Server-Side Price Calculation & Validation
-  -- We rely on the DB price for the base calculation.
-  v_calculated_total := (v_base_price * p_quantity);
-  
-  IF p_delivery_requested THEN
-    v_calculated_total := v_calculated_total + COALESCE(v_delivery_fee, 0);
+  -- 5. SECURITY: Server-side subtotal and total calculation.
+  -- Never trust client-submitted prices.
+  IF jsonb_array_length(v_drop_menu_items) > 0 THEN
+    IF p_selected_items IS NULL OR jsonb_typeof(p_selected_items) <> 'array' THEN
+      RAISE EXCEPTION 'Invalid selection payload.';
+    END IF;
+
+    IF jsonb_array_length(p_selected_items) <> jsonb_array_length(v_drop_menu_items) THEN
+      RAISE EXCEPTION 'Selection payload does not match package items.';
+    END IF;
+
+    v_server_unit_subtotal := 0;
+
+    FOR v_selected_item IN SELECT * FROM jsonb_array_elements(p_selected_items) LOOP
+      SELECT item
+      INTO v_menu_item
+      FROM jsonb_array_elements(v_drop_menu_items) AS item
+      WHERE item->>'id' = COALESCE(v_selected_item->>'itemId', '')
+      LIMIT 1;
+
+      IF v_menu_item IS NULL THEN
+        RAISE EXCEPTION 'Invalid menu item selection.';
+      END IF;
+
+      v_server_unit_subtotal := v_server_unit_subtotal + COALESCE((v_menu_item->>'basePrice')::NUMERIC, 0);
+
+      IF jsonb_typeof(COALESCE(v_selected_item->'selectedModifiers', '[]'::jsonb)) <> 'array' THEN
+        RAISE EXCEPTION 'Invalid modifier payload.';
+      END IF;
+
+      FOR v_selected_mod_group IN
+        SELECT * FROM jsonb_array_elements(COALESCE(v_selected_item->'selectedModifiers', '[]'::jsonb))
+      LOOP
+        SELECT grp
+        INTO v_mod_group
+        FROM jsonb_array_elements(COALESCE(v_menu_item->'modifierGroups', '[]'::jsonb)) AS grp
+        WHERE grp->>'id' = COALESCE(v_selected_mod_group->>'groupId', '')
+        LIMIT 1;
+
+        IF v_mod_group IS NULL THEN
+          RAISE EXCEPTION 'Invalid modifier group selection.';
+        END IF;
+
+        IF jsonb_typeof(COALESCE(v_selected_mod_group->'options', '[]'::jsonb)) <> 'array' THEN
+          RAISE EXCEPTION 'Invalid modifier options payload.';
+        END IF;
+
+        FOR v_selected_option IN
+          SELECT * FROM jsonb_array_elements(COALESCE(v_selected_mod_group->'options', '[]'::jsonb))
+        LOOP
+          SELECT opt
+          INTO v_mod_option
+          FROM jsonb_array_elements(COALESCE(v_mod_group->'options', '[]'::jsonb)) AS opt
+          WHERE opt->>'id' = COALESCE(v_selected_option->>'id', '')
+          LIMIT 1;
+
+          IF v_mod_option IS NULL THEN
+            RAISE EXCEPTION 'Invalid modifier option selection.';
+          END IF;
+
+          v_server_unit_subtotal := v_server_unit_subtotal + COALESCE((v_mod_option->>'additionalPrice')::NUMERIC, 0);
+        END LOOP;
+      END LOOP;
+    END LOOP;
+
+    v_server_subtotal := v_server_unit_subtotal * p_quantity;
+  ELSE
+    v_server_subtotal := v_base_price * p_quantity;
   END IF;
+
+  v_server_subtotal := ROUND(COALESCE(v_server_subtotal, 0)::NUMERIC, 2);
+  v_calculated_total := v_server_subtotal + CASE WHEN p_delivery_requested THEN COALESCE(v_delivery_fee, 0) ELSE 0 END;
 
   SELECT COALESCE(booking_fee_per_package, 0)
   INTO v_booking_fee_per_package
@@ -778,19 +939,23 @@ BEGIN
   WHERE id = 1;
 
   v_booking_fee := COALESCE(v_booking_fee_per_package, 0) * p_quantity;
-  v_tax_amount := (COALESCE(p_subtotal, 0) + v_booking_fee + (CASE WHEN p_delivery_requested THEN COALESCE(v_delivery_fee, 0) ELSE 0 END)) * v_tax_rate;
+  v_tax_amount := (v_server_subtotal + v_booking_fee + (CASE WHEN p_delivery_requested THEN COALESCE(v_delivery_fee, 0) ELSE 0 END)) * v_tax_rate;
+  v_tax_amount := ROUND(COALESCE(v_tax_amount, 0)::NUMERIC, 2);
 
-  v_expected_total_base := COALESCE(p_subtotal, 0)
+  v_expected_total_base := v_server_subtotal
     + v_booking_fee
     + v_tax_amount
     + (CASE WHEN p_delivery_requested THEN COALESCE(v_delivery_fee, 0) ELSE 0 END);
+  v_expected_total_base := ROUND(COALESCE(v_expected_total_base, 0)::NUMERIC, 2);
 
   v_stripe_fee_amount := CASE
     WHEN v_pass_stripe_fee THEN (v_expected_total_base * 0.029) + 0.20
     ELSE 0
   END;
+  v_stripe_fee_amount := ROUND(COALESCE(v_stripe_fee_amount, 0)::NUMERIC, 2);
 
   v_expected_total := v_expected_total_base + v_stripe_fee_amount;
+  v_expected_total := ROUND(COALESCE(v_expected_total, 0)::NUMERIC, 2);
 
   -- SECURITY PATCH: If the drop relies on Menu Items (base_price might be 0), 
   -- we must ensure the user is actually paying *something*.
@@ -808,6 +973,14 @@ BEGIN
     RAISE EXCEPTION 'Payment verification failed. Expected % exceeds provided %', v_expected_total, p_total_paid;
   END IF;
 
+  IF ABS(COALESCE(p_subtotal, 0) - v_server_subtotal) > 0.01 THEN
+    RAISE EXCEPTION 'Subtotal verification failed.';
+  END IF;
+
+  IF ABS(COALESCE(p_total_paid, 0) - v_expected_total) > 0.01 THEN
+    RAISE EXCEPTION 'Payment verification failed. Amount mismatch.';
+  END IF;
+
   -- 6. Create Purchase Record using VERIFIED User ID
   v_checkout_token := gen_random_uuid()::text;
 
@@ -816,7 +989,7 @@ BEGIN
     delivery_requested, delivery_address, selected_items, drop_name, drop_image,
     order_notes, is_bulk, checkout_token
   ) VALUES (
-    v_verified_user_id, p_drop_id, p_customer_name, p_customer_email, p_quantity, p_subtotal, v_tax_rate, v_tax_amount, v_booking_fee, v_stripe_fee_amount, v_pass_stripe_fee, p_total_paid,
+    v_verified_user_id, p_drop_id, p_customer_name, p_customer_email, p_quantity, v_server_subtotal, v_tax_rate, v_tax_amount, v_booking_fee, v_stripe_fee_amount, v_pass_stripe_fee, v_expected_total,
     p_delivery_requested, p_delivery_address, p_selected_items, p_drop_name, p_drop_image,
     p_order_notes, COALESCE(p_is_bulk, false), v_checkout_token
   ) RETURNING id INTO v_new_purchase_id;
@@ -832,6 +1005,15 @@ BEGIN
 
 END;
 $$;
+
+REVOKE EXECUTE ON FUNCTION public.check_email_role(TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.check_email_role(TEXT) TO service_role;
+
+REVOKE EXECUTE ON FUNCTION public.purchase_drop_item(UUID, UUID, TEXT, TEXT, INT, NUMERIC, NUMERIC, NUMERIC, NUMERIC, NUMERIC, NUMERIC, BOOLEAN, TEXT, JSONB, TEXT, TEXT, TEXT, BOOLEAN) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.purchase_drop_item(UUID, UUID, TEXT, TEXT, INT, NUMERIC, NUMERIC, NUMERIC, NUMERIC, NUMERIC, NUMERIC, BOOLEAN, TEXT, JSONB, TEXT, TEXT, TEXT, BOOLEAN) TO authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.admin_delete_user_release_email(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_delete_user_release_email(UUID) TO authenticated;
 
 -- Restore reserved inventory when a pending checkout fails/expires.
 CREATE OR REPLACE FUNCTION public.restore_drop_inventory(
@@ -864,3 +1046,6 @@ BEGIN
     AND COALESCE(is_deleted, false) = false;
 END;
 $$;
+
+REVOKE EXECUTE ON FUNCTION public.restore_drop_inventory(UUID, INT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.restore_drop_inventory(UUID, INT) TO authenticated, service_role;

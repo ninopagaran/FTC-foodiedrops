@@ -699,65 +699,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {activeTab === 'SETTINGS' && (
-          <div className="bg-zinc-950 border border-zinc-900 p-8 max-w-xl">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-500 mb-6">Booking Fee</h3>
-            <div className="space-y-4">
-              <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Per Package (USD)</label>
-              <input
-                type="number"
-                min={1}
-                step="0.01"
-                value={bookingFeeInput}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  if (raw === '') {
-                    setBookingFeeInput('');
-                    return;
-                  }
-                  if (!/^\d*\.?\d*$/.test(raw)) return;
-                  setBookingFeeInput(raw);
-                  const parsed = Number(raw);
-                  if (Number.isFinite(parsed)) {
-                    setBookingFeePerPackage(Math.max(1, parsed));
-                  }
-                }}
-                onBlur={() => {
-                  const parsed = Number(bookingFeeInput);
-                  const safe = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
-                  setBookingFeePerPackage(safe);
-                  setBookingFeeInput(String(safe));
-                }}
-                className="w-full bg-black border-2 border-zinc-800 p-4 text-white font-black outline-none focus:border-fuchsia-500"
-              />
-              {settingsMessage && (
-                <p className={`text-[10px] font-black uppercase tracking-widest ${settingsMessage.includes('Failed') ? 'text-red-400' : 'text-green-400'}`}>
-                  {settingsMessage}
+          <div className="space-y-8">
+            <div className="bg-zinc-950 border border-zinc-900 p-8 max-w-xl">
+              <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-500 mb-6">Booking Fee</h3>
+              <div className="space-y-4">
+                <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Per Package (USD)</label>
+                <input
+                  type="number"
+                  min={1}
+                  step="0.01"
+                  value={bookingFeeInput}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === '') {
+                      setBookingFeeInput('');
+                      return;
+                    }
+                    if (!/^\d*\.?\d*$/.test(raw)) return;
+                    setBookingFeeInput(raw);
+                    const parsed = Number(raw);
+                    if (Number.isFinite(parsed)) {
+                      setBookingFeePerPackage(Math.max(1, parsed));
+                    }
+                  }}
+                  onBlur={() => {
+                    const parsed = Number(bookingFeeInput);
+                    const safe = Number.isFinite(parsed) && parsed >= 1 ? parsed : 1;
+                    setBookingFeePerPackage(safe);
+                    setBookingFeeInput(String(safe));
+                  }}
+                  className="w-full bg-black border-2 border-zinc-800 p-4 text-white font-black outline-none focus:border-fuchsia-500"
+                />
+                {settingsMessage && (
+                  <p className={`text-[10px] font-black uppercase tracking-widest ${settingsMessage.includes('Failed') ? 'text-red-400' : 'text-green-400'}`}>
+                    {settingsMessage}
+                  </p>
+                )}
+                <Button
+                  size="md"
+                  className="bg-fuchsia-500 text-black shadow-none"
+                  isLoading={isSavingSettings}
+                  onClick={async () => {
+                    try {
+                      setIsSavingSettings(true);
+                      setSettingsMessage(null);
+                      await api.updateAppSettings({ booking_fee_per_package: bookingFeePerPackage });
+                      setSettingsMessage('Settings saved.');
+                    } catch (error) {
+                      console.error('Failed to update settings', error);
+                      setSettingsMessage('Failed to save settings.');
+                    } finally {
+                      setIsSavingSettings(false);
+                    }
+                  }}
+                >
+                  Save Booking Fee
+                </Button>
+                <p className="text-[10px] text-zinc-600 font-bold">
+                  Applies to all orders. Example: 8 quantity = ${ (bookingFeePerPackage * 8).toFixed(2) }.
                 </p>
-              )}
-              <Button
-                size="md"
-                className="bg-fuchsia-500 text-black shadow-none"
-                isLoading={isSavingSettings}
-                onClick={async () => {
-                  try {
-                    setIsSavingSettings(true);
-                    setSettingsMessage(null);
-                    await api.updateAppSettings({ booking_fee_per_package: bookingFeePerPackage });
-                    setSettingsMessage('Settings saved.');
-                  } catch (error) {
-                    console.error('Failed to update settings', error);
-                    setSettingsMessage('Failed to save settings.');
-                  } finally {
-                    setIsSavingSettings(false);
-                  }
-                }}
-              >
-                Save Booking Fee
-              </Button>
-              <p className="text-[10px] text-zinc-600 font-bold">
-                Applies to all orders. Example: 8 quantity = ${ (bookingFeePerPackage * 8).toFixed(2) }.
-              </p>
+              </div>
             </div>
+
+            
           </div>
         )}
 
@@ -1303,14 +1307,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </div>
 
       {editingCustomer && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-6">
-          <div className="w-full max-w-xl bg-zinc-950 border-4 border-zinc-800 p-6 space-y-6">
+        <div className="fixed inset-0 z-[120] flex items-start justify-center bg-black/80 p-6 overflow-y-auto">
+          <div className="w-full max-w-xl bg-zinc-950 border-4 border-zinc-800 p-6 space-y-6 my-auto max-h-[calc(100vh-3rem)] overflow-y-auto">
             <h3 className="text-xl font-black uppercase tracking-widest">Edit User</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input className="bg-black border border-zinc-800 p-3 text-sm font-bold" placeholder="Name" value={customerForm.name || ''} onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })} />
-              <input className="bg-black border border-zinc-800 p-3 text-sm font-bold" placeholder="Email" value={customerForm.email || ''} onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })} />
-              <input className="bg-black border border-zinc-800 p-3 text-sm font-bold" placeholder="Phone" value={customerForm.phone || ''} onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })} />
-              <input className="bg-black border border-zinc-800 p-3 text-sm font-bold" placeholder="Company" value={customerForm.company || ''} onChange={(e) => setCustomerForm({ ...customerForm, company: e.target.value })} />
+              <input className="bg-black border border-zinc-800 p-3 text-sm font-bold" placeholder="Name" autoComplete="off" value={customerForm.name || ''} onChange={(e) => setCustomerForm({ ...customerForm, name: e.target.value })} />
+              <input className="bg-black border border-zinc-800 p-3 text-sm font-bold" placeholder="Email" autoComplete="off" value={customerForm.email || ''} onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })} />
+              <input className="bg-black border border-zinc-800 p-3 text-sm font-bold" placeholder="Phone" autoComplete="off" value={customerForm.phone || ''} onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })} />
+              <input className="bg-black border border-zinc-800 p-3 text-sm font-bold" placeholder="Company" autoComplete="off" value={customerForm.company || ''} onChange={(e) => setCustomerForm({ ...customerForm, company: e.target.value })} />
               <div className="bg-black border border-zinc-800 p-3 text-[10px] font-black uppercase tracking-widest text-zinc-400 flex items-center">
                 Role: {editingCustomer.is_admin ? 'Admin' : editingCustomer.is_vendor ? 'Vendor' : 'Customer'}
               </div>
@@ -1339,8 +1343,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {confirmDeleteCustomer && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-6">
-          <div className="w-full max-w-md bg-zinc-950 border-4 border-red-600 p-6 space-y-4">
+        <div className="fixed inset-0 z-[120] flex items-start justify-center bg-black/80 p-6 overflow-y-auto">
+          <div className="w-full max-w-md bg-zinc-950 border-4 border-red-600 p-6 space-y-4 my-auto max-h-[calc(100vh-3rem)] overflow-y-auto">
             <h3 className="text-xl font-black uppercase tracking-widest text-red-400">Are you sure?</h3>
             <p className="text-sm text-zinc-400">This action cannot be undone.</p>
             <div className="flex justify-end gap-3">
@@ -1370,8 +1374,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {confirmDeleteDrop && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-6">
-          <div className="w-full max-w-md bg-zinc-950 border-4 border-red-600 p-6 space-y-4">
+        <div className="fixed inset-0 z-[120] flex items-start justify-center bg-black/80 p-6 overflow-y-auto">
+          <div className="w-full max-w-md bg-zinc-950 border-4 border-red-600 p-6 space-y-4 my-auto max-h-[calc(100vh-3rem)] overflow-y-auto">
             <h3 className="text-xl font-black uppercase tracking-widest text-red-400">Delete Package?</h3>
             <p className="text-sm text-zinc-400">
               This will remove the drop from all admin, vendor, and customer views immediately.
@@ -1396,8 +1400,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {viewingCustomer && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-6">
-          <div className="w-full max-w-3xl bg-zinc-950 border-4 border-zinc-800 p-6 space-y-6 max-h-[85vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[120] flex items-start justify-center bg-black/80 p-6 overflow-y-auto">
+          <div className="w-full max-w-3xl bg-zinc-950 border-4 border-zinc-800 p-6 space-y-6 my-auto max-h-[calc(100vh-3rem)] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-black uppercase tracking-widest">Customer Profile</h3>
@@ -1490,8 +1494,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {viewingVendor && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-6">
-          <div className="w-full max-w-4xl bg-zinc-950 border-4 border-zinc-800 p-6 space-y-6 max-h-[85vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[120] flex items-start justify-center bg-black/80 p-6 overflow-y-auto">
+          <div className="w-full max-w-4xl bg-zinc-950 border-4 border-zinc-800 p-6 space-y-6 my-auto max-h-[calc(100vh-3rem)] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-xl font-black uppercase tracking-widest">Vendor Profile</h3>
@@ -1522,7 +1526,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             <div className="flex items-center gap-3">
               <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Sort:</span>
               <button className={`text-[10px] font-black uppercase tracking-widest ${vendorDropSortBy === 'name' ? 'text-white' : 'text-zinc-500'}`} onClick={() => { setVendorDropSortBy('name'); setVendorDropSortDir(vendorDropSortDir === 'asc' ? 'desc' : 'asc'); }}>Name</button>
-              <button className={`text-[10px] font-black uppercase tracking-widest ${vendorDropSortBy === 'category' ? 'text-white' : 'text-zinc-500'}`} onClick={() => { setVendorDropSortBy('category'); setVendorDropSortDir(vendorDropSortDir === 'asc' ? 'desc' : 'asc'); }}>Cuisine</button>
+              <button className={`text-[10px] font-black uppercase tracking-widest ${vendorDropSortBy === 'category' ? 'text-white' : 'text-zinc-500'}`} onClick={() => { setVendorDropSortBy('category'); setVendorDropSortDir(vendorDropSortDir === 'asc' ? 'desc' : 'asc'); }}>Category / Type</button>
               <select className="bg-zinc-950 border border-zinc-800 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500" value={vendorDropStatusFilter} onChange={(e) => setVendorDropStatusFilter(e.target.value as any)}>
                 <option value="">All Status</option>
                 <option value={DropApprovalStatus.PENDING}>Pending</option>
@@ -1530,7 +1534,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <option value={DropApprovalStatus.REJECTED}>Rejected</option>
               </select>
               <select className="bg-zinc-950 border border-zinc-800 px-2 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-500" value={vendorDropCuisineFilter} onChange={(e) => setVendorDropCuisineFilter(e.target.value)}>
-                <option value="">All Cuisines</option>
+                <option value="">All Categories / Types</option>
                 {[...new Set(vendorDrops.map(d => d.category).filter(Boolean) as string[])].map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
@@ -1541,7 +1545,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <table className="w-full text-left">
                 <thead className="border-b border-zinc-900">
                   <tr>
-                  {['Name', 'Cuisine', 'Status', 'Start Date', 'Qty', 'Price', 'Actions'].map((h) => (
+                  {['Name', 'Category / Type', 'Status', 'Start Date', 'Qty', 'Price', 'Actions'].map((h) => (
                     <th key={h} className="p-4 text-[10px] font-black uppercase tracking-widest text-zinc-500">{h}</th>
                   ))}
                   </tr>
@@ -1589,8 +1593,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       )}
 
       {rejectingDrop && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/80 p-6">
-          <div className="w-full max-w-md bg-zinc-950 border-4 border-yellow-600 p-6 space-y-4">
+        <div className="fixed inset-0 z-[120] flex items-start justify-center bg-black/80 p-6 overflow-y-auto">
+          <div className="w-full max-w-md bg-zinc-950 border-4 border-yellow-600 p-6 space-y-4 my-auto max-h-[calc(100vh-3rem)] overflow-y-auto">
             <h3 className="text-xl font-black uppercase tracking-widest text-yellow-400">
               {rejectMode === 'revise' ? 'Send Back for Revision' : 'Reject Package'}
             </h3>

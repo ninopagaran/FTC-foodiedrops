@@ -108,9 +108,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ drop, quantity, de
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/98 backdrop-blur-2xl p-4" role="dialog" aria-modal="true" aria-labelledby="checkout-modal-title">
-      <div className="w-full max-w-2xl max-h-[90vh] bg-zinc-950 border-8 border-black relative overflow-hidden shadow-2xl">
-        <div className="max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-[100] flex items-start justify-center bg-black/98 backdrop-blur-2xl p-4 overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="checkout-modal-title">
+      <div className="w-full max-w-2xl max-h-[calc(100vh-2rem)] my-auto bg-zinc-950 border-8 border-black relative overflow-hidden shadow-2xl">
+        <div className="max-h-[calc(100vh-2rem)] overflow-y-auto">
         {!isProcessing && (
           <button onClick={onClose} className="absolute top-4 right-4 sm:top-8 sm:right-8 text-zinc-700 hover:text-white transition-colors z-10 p-2">
             <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -123,11 +123,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ drop, quantity, de
             <div className="space-y-6 sm:space-y-8">
               <div>
                  <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Name <span className="text-fuchsia-500">*</span></label>
-                 <input required className="mt-2 w-full bg-zinc-900 border-4 border-black p-4 sm:p-6 text-white font-black uppercase italic tracking-tighter text-lg sm:text-2xl outline-none focus:border-fuchsia-500 transition-colors" placeholder="YOUR NAME" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
+                 <input required className="mt-2 w-full bg-zinc-900 border-4 border-black p-4 sm:p-6 text-white font-black uppercase italic tracking-tighter text-lg sm:text-2xl outline-none focus:border-fuchsia-500 transition-colors" autoComplete="off" placeholder="YOUR NAME" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} />
               </div>
               <div>
                  <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-500">Email <span className="text-fuchsia-500">*</span></label>
-                 <input required type="email" className="mt-2 w-full bg-zinc-900 border-4 border-black p-4 sm:p-6 text-white font-black uppercase italic tracking-tighter text-lg sm:text-2xl outline-none focus:border-fuchsia-500 transition-colors" placeholder="YOUR EMAIL" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
+                 <input required type="email" className="mt-2 w-full bg-zinc-900 border-4 border-black p-4 sm:p-6 text-white font-black uppercase italic tracking-tighter text-lg sm:text-2xl outline-none focus:border-fuchsia-500 transition-colors" autoComplete="off" placeholder="YOUR EMAIL" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
               </div>
               
               {deliveryRequested && (
@@ -136,6 +136,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ drop, quantity, de
                     <input 
                       required 
                       className="w-full bg-zinc-900 border-4 border-fuchsia-500/30 p-4 sm:p-6 text-white font-black uppercase italic tracking-tighter text-lg sm:text-2xl outline-none focus:border-fuchsia-500 transition-colors" 
+                      autoComplete="off"
                       placeholder="STREET ADDRESS" 
                       value={formData.deliveryAddress} 
                       onChange={e => setFormData({ ...formData, deliveryAddress: e.target.value })} 
