@@ -86,7 +86,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
     return {
       name: '',
       chef: user.name || '', // Default to the user's name/brand
-      category: DEFAULT_DROP_CATEGORIES[0],
+      category: '',
       price: 0, 
       tax_rate: 0,
       total_quantity: 50,
@@ -375,6 +375,12 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
       return alert("Complete your contact details before submitting a drop.");
     }
 
+    if (!formData.category || !String(formData.category).trim()) {
+      setFormError("Drop category/type is required.");
+      setStep(1);
+      return;
+    }
+
     if (!imageFile && !formData.image) {
       setFormError("Please upload an image for your drop.");
       setStep(1);
@@ -622,9 +628,9 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                             <>
                         <input
                           type="text"
-                          value={cuisineOpen ? cuisineQuery : (formData.category || DEFAULT_DROP_CATEGORIES[0])}
+                          value={cuisineOpen ? cuisineQuery : (formData.category || '')}
                           onFocus={() => {
-                            setCuisineQuery(formData.category || DEFAULT_DROP_CATEGORIES[0]);
+                            setCuisineQuery(formData.category || '');
                             setCuisineOpen(true);
                             setCategoryHighlightIndex(0);
                           }}
@@ -708,7 +714,7 @@ export const SellerStudio: React.FC<SellerStudioProps> = ({ user, onProfileUpdat
                                 className={`w-full text-left px-4 py-3 text-[11px] font-black uppercase tracking-widest ${
                                   idx === categoryHighlightIndex
                                     ? 'bg-zinc-800 text-white'
-                                    : (formData.category || DEFAULT_DROP_CATEGORIES[0]) === c
+                                    : formData.category === c
                                     ? 'bg-fuchsia-500 text-black'
                                     : 'text-zinc-300 hover:bg-zinc-900'
                                 }`}
