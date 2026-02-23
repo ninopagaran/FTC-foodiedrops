@@ -19,10 +19,32 @@ Limited restaurant drop marketplace with Supabase auth/data and Stripe checkout.
 2. Run `supabase_schema.sql`.
 3. (Optional) make an admin account:
    ```sql
-   update public.profiles
-   set is_admin = true
+   select public.set_profile_admin_status(
+     (select id from public.profiles where email = 'your-email@example.com'),
+     true,
+     'initial admin bootstrap'
+   );
+   ```
+
+## Promote User to Admin (Runbook)
+
+In Supabase SQL Editor:
+
+1. Promote:
+   ```sql
+   select public.set_profile_admin_status(
+     (select id from public.profiles where email = 'your-email@example.com'),
+     true,
+     'manual admin grant'
+   );
+   ```
+2. Verify:
+   ```sql
+   select email, is_admin
+   from public.profiles
    where email = 'your-email@example.com';
    ```
+3. Have the user log out and back in so the app reloads their admin access.
 
 ## Stripe integration setup
 

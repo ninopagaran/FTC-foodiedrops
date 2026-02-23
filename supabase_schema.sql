@@ -622,12 +622,26 @@ CREATE OR REPLACE FUNCTION public.prevent_privilege_escalation()
 RETURNS TRIGGER AS $$
 DECLARE
   current_is_admin BOOLEAN;
+  caller_is_privileged BOOLEAN;
 BEGIN
   -- Insert: Safe defaults, but we allow client to request flags if needed (usually handled by signup logic)
   IF TG_OP = 'INSERT' THEN
      NEW.is_admin := false; 
      -- We allow is_vendor to be set on insert if passed, or default to false
      RETURN NEW;
+  END IF;
+
+  caller_is_privileged := (
+    auth.role() = 'service_role'
+    OR (
+      auth.uid() IS NULL
+      AND current_user IN ('postgres', 'supabase_admin', 'service_role')
+    )
+  );
+
+  -- Trusted server/database contexts can manage admin flags directly.
+  IF caller_is_privileged THEN
+    RETURN NEW;
   END IF;
 
   SELECT is_admin INTO current_is_admin FROM public.profiles WHERE id = auth.uid();
@@ -653,6 +667,80 @@ CREATE TRIGGER check_profile_change
   BEFORE INSERT OR UPDATE ON public.profiles
   FOR EACH ROW
   EXECUTE FUNCTION public.prevent_privilege_escalation();
+
+CREATE OR REPLACE FUNCTION public.set_profile_admin_status(
+  p_user_id UUID,
+  p_is_admin BOOLEAN,
+  p_reason TEXT DEFAULT NULL
+)
+RETURNS public.profiles
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET row_security = off
+AS $$
+DECLARE
+  v_actor_id UUID := auth.uid();
+  v_previous_is_admin BOOLEAN;
+  v_updated_profile public.profiles%ROWTYPE;
+  v_caller_is_authorized BOOLEAN;
+BEGIN
+  IF p_user_id IS NULL THEN
+    RAISE EXCEPTION 'p_user_id is required';
+  END IF;
+
+  IF p_is_admin IS NULL THEN
+    RAISE EXCEPTION 'p_is_admin is required';
+  END IF;
+
+  v_caller_is_authorized := (
+    auth.role() = 'service_role'
+    OR public.is_admin() = true
+    OR (
+      v_actor_id IS NULL
+      AND current_user IN ('postgres', 'supabase_admin', 'service_role')
+    )
+  );
+
+  IF NOT v_caller_is_authorized THEN
+    RAISE EXCEPTION 'Unauthorized: only admins or service role can set admin status.';
+  END IF;
+
+  SELECT is_admin
+  INTO v_previous_is_admin
+  FROM public.profiles
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Profile not found for user id: %', p_user_id;
+  END IF;
+
+  UPDATE public.profiles
+  SET is_admin = p_is_admin
+  WHERE id = p_user_id
+  RETURNING * INTO v_updated_profile;
+
+  IF v_previous_is_admin IS DISTINCT FROM p_is_admin THEN
+    INSERT INTO public.audit_log (actor_id, action, entity_type, entity_id, payload)
+    VALUES (
+      v_actor_id,
+      CASE WHEN p_is_admin THEN 'grant_admin' ELSE 'revoke_admin' END,
+      'profile',
+      p_user_id,
+      jsonb_build_object(
+        'from', v_previous_is_admin,
+        'to', p_is_admin,
+        'reason', NULLIF(btrim(COALESCE(p_reason, '')), ''),
+        'auth_role', auth.role(),
+        'db_role', current_user
+      )
+    );
+  END IF;
+
+  RETURN v_updated_profile;
+END;
+$$;
 
 -- Secure Vendors Table
 ALTER TABLE public.vendors ENABLE ROW LEVEL SECURITY;
@@ -1014,6 +1102,9 @@ GRANT EXECUTE ON FUNCTION public.purchase_drop_item(UUID, UUID, TEXT, TEXT, INT,
 
 REVOKE EXECUTE ON FUNCTION public.admin_delete_user_release_email(UUID) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_delete_user_release_email(UUID) TO authenticated;
+
+REVOKE EXECUTE ON FUNCTION public.set_profile_admin_status(UUID, BOOLEAN, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_profile_admin_status(UUID, BOOLEAN, TEXT) TO authenticated, service_role;
 
 -- Restore reserved inventory when a pending checkout fails/expires.
 CREATE OR REPLACE FUNCTION public.restore_drop_inventory(

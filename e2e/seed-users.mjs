@@ -129,7 +129,7 @@ const main = async () => {
   console.log('[seed-users] Created and validated users. Updated .env.local E2E_* credentials.');
   console.log('\nPromote admin user with SQL:');
   console.log(
-    `update public.profiles set is_admin = true where email = '${admin.email}';`
+    `select public.set_profile_admin_status((select id from public.profiles where email = '${admin.email}'), true, 'e2e seed promote admin');`
   );
 };
 
@@ -137,4 +137,3 @@ main().catch((error) => {
   console.error('[seed-users] Fatal error:', error);
   process.exit(1);
 });
-
