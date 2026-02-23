@@ -9,6 +9,7 @@ import { Profile } from './views/Profile';
 import { InfluenceLab } from './views/InfluenceLab';
 import { AdminDashboard } from './views/AdminDashboard';
 import { Auth } from './views/Auth';
+import { VendorPage } from './views/VendorPage';
 import * as api from './services/api';
 
 const parseRoute = (hash: string) => {
@@ -36,6 +37,9 @@ const parseRoute = (hash: string) => {
   }
   if (parts[0] === 'login' || parts[0] === 'auth') {
     return { view: 'AUTH', id: null, confirm: false };
+  }
+  if (parts[0] && parts.length === 1) {
+    return { view: 'VENDOR', id: decodeURIComponent(parts[0]), confirm: false };
   }
   return { view: 'HOME', id: null, confirm: false };
 };
@@ -334,6 +338,8 @@ const App: React.FC = () => {
           return <div className="min-h-screen flex items-center justify-center bg-[#050505] text-white"><p className="text-2xl font-black italic uppercase tracking-widest animate-pulse">Loading Admin...</p></div>;
         }
         return user?.isAdmin ? <AdminDashboard allDrops={adminDrops} onApproveDrop={handleApproveDrop} onRejectDrop={handleRejectDrop} onRefreshDrops={() => fetchDrops(user, false)} onBack={() => navigate('/')} /> : <Home user={user} drops={drops} onSelectDrop={(id) => navigate(`/drop/${id}`)} onPartnerClick={() => navigate('/studio')} />;
+      case 'VENDOR':
+        return <VendorPage vendorSlug={route.id || ''} drops={drops} onSelectDrop={(id) => navigate(`/drop/${id}`)} />;
       default:
         return <Home user={user} drops={drops} onSelectDrop={(id) => navigate(`/drop/${id}`)} onPartnerClick={() => navigate('/studio')} />;
     }

@@ -14,6 +14,13 @@ interface DropDetailProps {
   onPurchaseConfirm: (id: string, qty: number, name: string, email: string, delivery: boolean, selections: SelectedItem[], address?: string, orderNotes?: string, isBulk?: boolean) => Promise<string>;
 }
 
+const slugify = (value: string) =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+
 export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePerPackage, onBack, onPurchaseConfirm }) => {
   const [qty, setQty] = useState(1);
   const [qtyInput, setQtyInput] = useState('1');
@@ -41,6 +48,7 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
   const isUpcoming = now < startsAt;
   const isExpired = now > endsAt;
   const accentColor = drop.accent_color || '#d946ef';
+  const vendorSlug = useMemo(() => slugify(drop.chef || ''), [drop.chef]);
 
   const toggleOption = (itemId: string, groupId: string, option: ModifierOption, maxSelect: number) => {
     setSelections(prev => {
@@ -213,7 +221,22 @@ export const DropDetail: React.FC<DropDetailProps> = ({ drop, user, bookingFeePe
         <div className="absolute bottom-16 left-0 w-full px-4 sm:px-6">
            <div className="max-w-7xl mx-auto">
             <h1 className="font-heading text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-black italic tracking-tighter uppercase leading-[0.95] md:leading-[0.85] mb-6 break-words">{drop.name}</h1>
-              <p className="text-2xl md:text-3xl font-heading font-black text-white italic tracking-tighter">By <span className="underline decoration-[4px]" style={{ textDecorationColor: accentColor }}>{drop.chef}</span></p>
+              <p className="text-2xl md:text-3xl font-heading font-black text-white italic tracking-tighter">
+                By{' '}
+                {vendorSlug ? (
+                  <a
+                    href={`/#/${vendorSlug}`}
+                    className="underline decoration-[4px] hover:opacity-80 transition-opacity cursor-pointer"
+                    style={{ textDecorationColor: accentColor }}
+                  >
+                    {drop.chef}
+                  </a>
+                ) : (
+                  <span className="underline decoration-[4px]" style={{ textDecorationColor: accentColor }}>
+                    {drop.chef}
+                  </span>
+                )}
+              </p>
            </div>
         </div>
       </section>
